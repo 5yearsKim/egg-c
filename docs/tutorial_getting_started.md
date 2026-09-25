@@ -2,21 +2,14 @@
 
 [All guides](README.md) · Next: [Practical usage](basic_usage.md)
 
-In this tutorial, you will simplify `0 + (1 * a)` to `a`, then look at how
-`egg-c` represents expressions and recognizes patterns. You need basic C++
-knowledge, but no previous experience with e-graphs.
+This tutorial simplifies `0 + (1 * a)` to `a` and introduces e-classes and pattern
+matching. It adapts Rust `egg`'s [getting-started tutorial](https://egraphs-good.github.io/egg/egg/tutorials/_02_getting_started/).
+The snippets come from the complete
+[`tutorial_getting_started.cpp`](../examples/tutorial_getting_started.cpp) example.
 
-This adapts Rust `egg`'s [getting-started tutorial](https://egraphs-good.github.io/egg/egg/tutorials/_02_getting_started/).
-The complete runnable program is
-[`examples/tutorial_getting_started.cpp`](../examples/tutorial_getting_started.cpp).
-The snippets below walk through parts of that program; they are not separate
-source files.
+## Build and run
 
-## 1. Build and run the example
-
-You need CMake 3.16 or newer, a compiler that supports C++17, and a local copy of
-this repository. Run these commands from the repository root, the directory
-containing `CMakeLists.txt`:
+With CMake 3.16 or newer and a C++17 compiler, run from the repository root:
 
 ```sh
 cmake -S . -B build -DEGGC_BUILD_EXAMPLES=ON
@@ -24,15 +17,7 @@ cmake --build build --target tutorial_getting_started
 ./build/examples/tutorial_getting_started
 ```
 
-The first command configures the project in `build/` and enables examples, which
-are disabled by default. The second compiles this tutorial and the library. The
-third runs the resulting executable.
-
-With a multi-configuration generator such as Visual Studio, build with
-`--config Debug` and look in `build/examples/Debug/` for the executable (with an
-`.exe` suffix on Windows).
-
-Expected output:
+The commands enable examples, build the tutorial, and run it. Expected output:
 
 ```text
 expression: (foo a b)
@@ -41,30 +26,27 @@ same expression shares a class: yes
 best: a (AST size 1)
 ```
 
-If CMake cannot find a compiler, install or select a C++ toolchain first. If it
-cannot find the tutorial target, rerun the configuration command with
-`-DEGGC_BUILD_EXAMPLES=ON`. More common issues are covered in the
-[troubleshooting table](basic_usage.md#troubleshooting).
+For Visual Studio or another multi-configuration generator, build with
+`--config Debug` and use `build/examples/Debug/` (with `.exe` on Windows).
 
-## 2. Read the expression syntax
+## Expressions and e-classes
 
-`egg-c` uses **S-expressions**: put the operator first, followed by its arguments,
-inside parentheses. A name or number on its own is an **atom**, or leaf.
+Expressions use **S-expressions**: the operator comes first, followed by its
+arguments. For example, `x + 0` becomes `(+ x 0)`, and `0 + (1 * a)` becomes
+`(+ 0 (* 1 a))`. Names and numbers such as `a` and `0` are leaves.
 
-| Familiar notation | `egg-c` text | Meaning |
-| --- | --- | --- |
-| `a` | `a` | A leaf named `a`. |
-| `x + 0` | `(+ x 0)` | A `+` node with two children. |
-| `0 + (1 * a)` | `(+ 0 (* 1 a))` | A `+` node whose second child is a `*` expression. |
-| `foo(a, b)` | `(foo a b)` | An operator named `foo` with two children. |
+The parser reads structure; rules and analyses supply the meaning of operators.
+Here are the main objects you will use:
 
-The parser reads structure. It does not evaluate arithmetic or assign meaning
-to an operator name. A plain `EGraph` knows nothing special about `+`, `*`, or
-`foo`; you supply equalities through rules, explicit merges, or an analysis.
+| Object | Meaning |
+| --- | --- |
+| `RecExpr` | One expression, with nodes that can share subexpressions. |
+| E-node (`ENode`) | An operator whose children refer to e-classes. |
+| E-class | A group of equivalent expressions, such as `x` and `(+ x 0)`. |
+| `EGraph` | The collection of e-classes and their relationships. |
+| `Id` | A class handle belonging to one graph; `find(id)` gives its current representative. |
 
-## 3. Simplify your first expression
-
-Here is the optimizer section of the runnable example:
+## Simplify an expression
 
 ```cpp
 eggc::EGraph optimizer;
@@ -81,17 +63,12 @@ const auto [cost, best] = eggc::Extractor(optimizer).find_best_rec_expr(root);
 // eggc::to_string(best) == "a" and cost == 1
 ```
 
-`parse_expr` turns text into a `RecExpr`, a representation of one expression.
-`add_expr` adds it to the e-graph and returns the ID of the class containing the
-whole expression. Keep this `root` so you can ask for a result later.
+`parse_expr` reads the input, and `add_expr` returns its root class ID. Each
+`parse_rewrite` takes a name, a pattern to find, and a replacement pattern.
+Variables start with `?`: `(+ ?x 0)` matches any left operand followed by zero,
+while `(+ x 0)` specifically matches the literal name `x`.
 
-Each `parse_rewrite` takes a descriptive name, a left-hand pattern to find, and a
-right-hand pattern to add. For example, `add-0` says: find a sum whose right child
-is `0`, bind its left child to `?x`, and make that sum equivalent to `?x`.
-Pattern variables begin with `?`; the bare atom `x` would match the literal name
-`x` instead.
-
-One way to understand the resulting equalities is:
+The rules justify this sequence:
 
 ```text
 (+ 0 (* 1 a))
@@ -101,37 +78,18 @@ One way to understand the resulting equalities is:
     = a               mul-1
 ```
 
-This is a hand-written explanation of the rules, not a trace printed by the
-runner. The runner searches for matches throughout the graph, adds alternatives,
-and merges their classes. It keeps earlier alternatives available. Notice why
-the commutativity rules help: the input has `0` and `1` on the left, while the
-identity rules expect them on the right.
+The commutativity rules move `0` and `1` to the right, where the identity rules
+expect them. The graph retains equivalent alternatives as it discovers them.
 
-`run` repeats search, application, and rebuilding until no further change occurs
-or a limit is reached. Reaching a state with no further change is called
-**equality saturation**. The returned `report` tells you why the run stopped;
-the [practical guide](basic_usage.md#control-the-run-and-read-its-report) shows how
-to inspect it.
+`run` repeats matching, rule application, and rebuilding until no further change
+occurs (**saturation**) or a limit is reached. Its report records the stop reason.
+`Extractor` then selects the cheapest expression represented in the root class.
+The default cost is **AST size**, the number of expression-tree nodes: the input
+costs 5, while `a` costs 1.
 
-Finally, `Extractor` chooses the cheapest expression represented in the root's
-class. Its default cost is **AST size**, the number of nodes in the expression
-tree. Here the original has five nodes (`+`, `0`, `*`, `1`, `a`), while `a` has
-one. A small cost means a small expression under this policy; it does not measure
-execution time.
+## Add, merge, and rebuild
 
-## 4. Understand what the graph stores
-
-These terms describe the objects you just used:
-
-| Term | What it represents |
-| --- | --- |
-| Expression (`RecExpr`) | One expression, such as `(+ x 0)`. Internally, children refer to earlier nodes, so subexpressions can be shared. |
-| E-node (`ENode`) | An operator and child e-class IDs. For a sum, the children refer to classes containing its operands. |
-| E-class | A collection of e-nodes that the graph considers equivalent. After `add-0`, one class can represent both `x` and `(+ x 0)`. |
-| E-graph (`EGraph`) | The collection of e-classes and their relationships. |
-| Class ID (`Id`) | A handle to a class. `find(id)` returns its current representative after merges. IDs belong to the graph that created them. |
-
-You can add an expression all at once or build it from its children:
+You can build expressions from children or add a parsed expression directly:
 
 ```cpp
 const eggc::RecExpr expr = eggc::parse_expr("(foo a b)");
@@ -144,36 +102,17 @@ graph.rebuild();
 // graph.find(foo) == graph.find(foo_again)
 ```
 
-`graph.add("a")` creates a leaf. `graph.add("foo", {a, b})` creates a parent
-whose children are those two classes. Adding the same structure again reuses its
-class. Compare `graph.find(left)` and `graph.find(right)` to check equivalence;
-saved IDs can differ even after their classes have been merged.
+Both ways produce the same class. To check equivalence after merges, compare
+`graph.find(left)` and `graph.find(right)`; the saved IDs themselves may differ.
 
-## 5. Merge classes and rebuild
+`merge(a, b)` asserts equality. After manual additions or merges, call `rebuild()`
+before matching, extracting, or querying class contents. Rebuilding propagates
+equalities to parents: merging `a` and `b` also makes `(f a)` and `(f b)` equal.
+This property is called **congruence**. The runner handles rebuilding for you.
 
-Calling `graph.merge(a, b)` asserts that `a` and `b` are equal. It is your
-responsibility to justify that assertion in the language you are modeling.
-This tutorial makes it just to demonstrate matching.
+## Match a repeated variable
 
-After additions or merges, call `rebuild()` before matching, extracting, or
-querying class contents. Rebuilding restores the graph's invariants and
-propagates equalities to parents. For example, if the graph contains `(f a)` and
-`(f b)` and you merge `a` with `b`, rebuilding also unifies those two parent
-expressions. This property is called **congruence**: equal inputs to the same
-operator give equal expressions.
-
-The usual manual workflow is:
-
-```text
-add expressions / merge classes -> rebuild -> match or extract
-```
-
-You can batch several changes before rebuilding. `run` handles rebuilding at its
-start and after applying each iteration's rewrites.
-
-## 6. Match a repeated variable
-
-Continuing with `graph`, `a`, `b`, and `foo` from the previous snippet:
+Continuing with the graph above:
 
 ```cpp
 const eggc::Pattern repeated = eggc::parse_pattern("(foo ?x ?x)");
@@ -183,36 +122,16 @@ graph.rebuild();
 const bool after = !eggc::match(graph, repeated, foo).empty();  // true
 ```
 
-`match` returns a collection of substitutions. Each substitution maps variable
-names such as `?x` to matching e-class IDs. An empty collection means that the
-pattern did not match in the requested class.
+Using `?x` twice requires both children to belong to the same e-class. The
+explicit merge asserts `a = b` for this demonstration. In your own program,
+only merge expressions you can justify as equal.
 
-Using `?x` twice requires both children to belong to the same class. Before the
-merge, `a` and `b` are distinct; afterward, either can serve as the same binding.
-Matching uses the equalities already in the graph, so two children need not have
-the same printed spelling to satisfy a repeated variable.
+`match` returns substitutions from variable names to class IDs; an empty result
+means no match. Different variables, as in `(foo ?x ?y)`, may bind to either
+different classes or the same class.
 
-## Try it yourself
-
-Edit the runnable example and rebuild its target after each change. It contains
-checks for the original results, so update those checks when you intentionally
-change the expected output.
-
-1. Replace the optimizer input with `(+ b 0)`. What should extraction return?
-2. Remove both commutativity rules and restore `(+ 0 (* 1 a))`. Which identity
-   rules can match now?
-3. Replace `(foo ?x ?x)` with `(foo ?x ?y)`. Does it match before the merge?
-
-<details>
-<summary>Answers</summary>
-
-1. `b`, with AST size 1. The `add-0` rule matches directly.
-2. None of the identity rules match. Their constants are on the right, so the
-   input stays `(+ 0 (* 1 a))`, with AST size 5.
-3. Yes. Distinct pattern variables may bind to different classes. They may also
-   bind to the same class; different names do not require different values.
-
-</details>
+**Try it:** change the optimizer input to `(+ b 0)`. It should extract `b` with
+cost 1. If you edit the runnable example, update its expected-result checks too.
 
 Continue to [Practical usage](basic_usage.md) for a complete program with constant
-folding, guarded rules, and run limits.
+folding and conditional rules.

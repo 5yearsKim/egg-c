@@ -2,13 +2,9 @@
 
 [All guides](README.md) · Previous: [Getting started](tutorial_getting_started.md) · Next: [Equivalences and unsafe rewrites](tutorial_explanations.md)
 
-This guide builds on the expression, e-class, and pattern concepts in
-[Getting started](tutorial_getting_started.md). You will combine rewrite rules
-with constant folding, add a condition to a rule, and inspect the runner's result.
+## Constant folding and rewrites
 
-## A complete constant-folding program
-
-Save this as `examples/my_simplifier.cpp` in your local checkout:
+Save this complete program as `examples/my_simplifier.cpp`:
 
 ```cpp
 #include "eggc/constant_analysis.hpp"
@@ -38,7 +34,7 @@ int main() {
 }
 ```
 
-From the repository root, configure, build, and run it:
+Build and run from the repository root:
 
 ```sh
 cmake -S . -B build -DEGGC_BUILD_EXAMPLES=ON
@@ -46,10 +42,9 @@ cmake --build build --target my_simplifier
 ./build/examples/my_simplifier
 ```
 
-CMake creates an example target for each `.cpp` file in `examples/`; rerunning
-configuration picks up your new file. With a multi-configuration generator, add
-`--config Debug` to the build command and use the executable in
-`build/examples/Debug/` (`my_simplifier.exe` on Windows).
+CMake creates a target for each `.cpp` file in `examples/`. Rerun configuration
+after adding a file. For multi-configuration generators, use `--config Debug`
+and the executable under `build/examples/Debug/` (`.exe` on Windows).
 
 Expected output:
 
@@ -58,95 +53,42 @@ Expected output:
 saturated: yes
 ```
 
-There are two sources of equality here. `ConstantAnalysis` discovers that
-`(* 2 3)` equals `6`, and `add-zero` makes `(+ x 0)` equivalent to `x`.
-Rebuilding propagates those alternatives to the outer sum, so extraction can
-choose `(+ 6 x)`. Its three tree nodes are `+`, `6`, and `x`.
+`ConstantAnalysis` folds `(* 2 3)` to `6`; `add-zero` makes `(+ x 0)` equivalent
+to `x`. Extraction chooses `(+ 6 x)`, whose three tree nodes are `+`, `6`, and `x`.
+An **analysis** attaches facts to classes and updates them as equalities accumulate.
+This analysis also adds a literal when it knows a class's value.
 
-An **analysis** attaches facts to e-classes and updates them as equalities
-accumulate. This constant analysis also adds a literal expression when it knows
-a class's value. You do not need a separate rewrite for every pair of numbers.
-`run` rebuilds the graph for you; if you manually add or merge nodes and then
-query the graph, call `rebuild()` first.
+Constant folding supports binary `+` and `*` over signed 64-bit integers.
+Unknown operands and overflowing results stay unknown; division is not folded.
+A plain `EGraph` has no constant analysis, so it only uses the equalities you add.
 
-### What constant analysis knows
+## Writing rules
 
-`ConstantAnalysis` recognizes signed 64-bit integer literals and folds binary
-`+` and `*` when both operands have known constant values. It uses exact integer
-results that fit in `int64_t`. An overflowing calculation remains unknown; it
-is not folded using wraparound arithmetic.
+A rewrite searches from left to right and records an equality. For example,
+`(+ ?x 0) -> ?x` simplifies existing sums; it does not generate sums from leaves.
+Every right-hand-side variable must appear on the left, or rule validation throws
+`std::invalid_argument`. Conditions must also use variables bound on the left.
 
-| Expression | Fact from constant analysis alone |
-| --- | --- |
-| `(* 2 3)` | Known value `6`. |
-| `(+ (* 2 3) 4)` | Known value `10`. |
-| `(+ x 0)` | Unknown; a rewrite can still simplify it to `x`. |
-| `(/ 6 3)` | Unknown; division is not evaluated by this analysis. |
-| `(+ 9223372036854775807 1)` | Unknown because the result exceeds `int64_t`. |
+Matching respects operator names, child counts, and operand order. Add
+commutativity or associativity rules explicitly when they are valid for your
+language. Repeated variables require the same e-class at every occurrence.
 
-A plain `eggc::EGraph graph;` has no analysis. It can still apply symbolic
-rewrites, but it will not automatically fold `(* 2 3)` to `6`.
-
-## Write patterns and rewrites
-
-Patterns use the same parenthesized syntax as expressions, with `?`-prefixed
-atoms acting as variables:
-
-| Pattern | What it matches |
-| --- | --- |
-| `(+ ?x 0)` | A sum with any left operand and literal `0` on the right. |
-| `(+ x 0)` | A sum with literal name `x` on the left and `0` on the right. |
-| `(* ?x ?x)` | A product whose children belong to the same e-class. |
-| `(* ?x ?y)` | A product with any two children, including equal ones. |
-
-A rewrite searches from left to right and records equality between its matched
-expression and its instantiated right-hand side. That equality is symmetric once
-recorded, but the runner only searches the direction you wrote. For example,
-`(+ ?x 0) -> ?x` does not generate sums from every leaf in the graph.
-
-Every variable on the right must occur on the left. This is valid:
-
-```cpp
-const auto rule = eggc::parse_rewrite("add-zero", "(+ ?x 0)", "?x");
-```
-
-Using `?y` as that right-hand side would throw `std::invalid_argument`, because
-there is no binding telling the runner what `?y` means. A condition's required
-variables must also be bound by the left-hand pattern.
-
-Operator names and child counts must match the pattern. The library does not
-implicitly make operators commutative or associative; add the relevant rules
-when they are valid for your language.
-
-### Quoted atoms
-
-Quote an atom when its name contains spaces or parentheses. This example uses a
-C++ raw string literal so the expression's quotes do not need C++ escaping:
+For atom names containing spaces or parentheses, use quotes:
 
 ```cpp
 const auto expr = eggc::parse_expr(R"((label "hello world"))");
 // One operator, label, with one child named hello world.
 ```
 
-Within quoted atoms, the expression parser supports `\n`, `\r`, `\t`, `\\`, and
-`\"` escapes. Quoting does not disable pattern-variable recognition: when parsed
-as a pattern, an atom whose name begins with `?` is still a variable.
+Quoted atoms support `\n`, `\r`, `\t`, `\\`, and `\"` escapes. In patterns,
+quoted names starting with `?` are still treated as variables.
 
 ## Conditional rewrites
 
-Some identities need a precondition. For integer division, `x / x = 1` is valid
-when `x` is nonzero. Here is a complete program you can put in
-`examples/my_guarded_rule.cpp` and build with the target `my_guarded_rule` using
-the same CMake steps as above:
+For integer division, `x / x = 1` requires a nonzero operand. To try it, replace
+`main` in the program above with:
 
 ```cpp
-#include "eggc/constant_analysis.hpp"
-#include "eggc/extract.hpp"
-#include "eggc/parser.hpp"
-#include "eggc/runner.hpp"
-#include <iostream>
-#include <memory>
-
 int main() {
     eggc::EGraph graph(std::make_shared<eggc::ConstantAnalysis>());
     const auto root = graph.add_expr(eggc::parse_expr("(/ 7 7)"));
@@ -160,36 +102,26 @@ int main() {
 }
 ```
 
-Expected output is `1 cost=1`. The repeated `?x` requires equal operands; the
-condition additionally requires an exact, known nonzero constant fact for that
-class. This rule supplies the division equality even though the analysis itself
-does not evaluate division.
+Expected output is `1 cost=1`. The repeated variable requires equal operands;
+`known_nonzero` additionally requires an exact nonzero integer fact.
 
-Try changing just the input:
-
-| Input | Extracted result | Why |
+| Input | Extracted result | Reason |
 | --- | --- | --- |
 | `(/ 7 7)` | `1` | The common operand is known to be nonzero. |
-| `(/ 0 0)` | `(/ 0 0)` | The condition rejects zero. |
-| `(/ x x)` | `(/ x x)` | An unknown value is not evidence of being nonzero. |
-| `(/ (+ 2 3) 5)` | `1` | Rebuilding discovers that both operands equal `5`. |
+| `(/ 0 0)` | `(/ 0 0)` | Zero fails the condition. |
+| `(/ x x)` | `(/ x x)` | The value of `x` is unknown. |
+| `(/ (+ 2 3) 5)` | `1` | Constant analysis makes both operands equal to `5`. |
 
-`known_nonzero` requires a graph with `ConstantAnalysis`; a missing or incompatible
-analysis is a configuration error. Overflowing folds also cannot establish its
-nonzero precondition.
-
-Conditions run against a rebuilt graph during search. A rejected match adds no
-right-hand-side nodes. If analysis facts change during rebuilding, the condition
-is checked again when that match is found in a later iteration. Custom conditions
-must be read-only and must stay true as sound equalities and facts accumulate.
-For example, accepting a match merely because two classes are currently different
-would be unsuitable: a later merge could invalidate that assumption.
+`known_nonzero` requires `ConstantAnalysis`; missing or incompatible analysis is
+an error. Conditions inspect a rebuilt graph during search, and rejected matches
+add no replacement nodes. Custom conditions must be read-only and remain true
+as sound equalities and facts accumulate.
 
 ## Control the run and read its report
 
-The default run allows 10 iterations and 10,000 stored nodes. Time and match
-limits are unset by default. To choose your own limits, replace the `run` call in
-the first program with the following block and add `#include <chrono>`:
+The defaults allow 10 iterations and 10,000 nodes, with no time or match limit.
+To set budgets, replace the first program's `run` call with this block and add
+`#include <chrono>`:
 
 ```cpp
 eggc::RunOptions options;
@@ -200,117 +132,70 @@ options.match_limit = 100000;
 const auto report = eggc::run(graph, rules, options);
 ```
 
-These are example budgets, not requirements. Check `report.reason` before
-assuming that saturation was reached:
+Check `report.reason` to see why the run stopped:
 
 | Stop reason | Meaning |
 | --- | --- |
-| `Saturated` | A completed iteration made no graph change and no rule was deferred by backoff. |
-| `IterationLimit` | The allowed iterations were exhausted. |
+| `Saturated` | An iteration made no graph change and no rule was deferred. |
+| `IterationLimit` | The iteration budget was exhausted. |
 | `NodeLimit` | The graph reached or exceeded its node budget. |
 | `TimeLimit` | A cooperative time check reached the deadline. |
-| `MatchLimit` | Search encountered more structural matches than allowed for that iteration. Its pending applications were discarded. |
+| `MatchLimit` | Search exceeded its match budget; that iteration's pending applications were discarded. |
 
-A limited run still leaves a rebuilt graph from which you can extract a result.
-That result is the cheapest represented expression under your cost policy;
-additional iterations or different rules may discover better alternatives.
-Even saturation only describes what your supplied rules can discover.
+A limited run still leaves a rebuilt graph for extraction. Its best expression
+is the cheapest currently represented; more rules or iterations may discover a
+better one. Node and time limits may be exceeded by an application or rebuild.
 
-Limits are checked at specific points in the runner. A rewrite application or
-rebuild can take the node count past the budget. Time checks are cooperative, so
-a single application or rebuild can finish after the requested deadline.
+`report.history` records per-iteration matches, applications, merges, node counts,
+and timing. Matches include those rejected by conditions; `condition_rejections`
+counts those rejections. See [`runner.hpp`](../include/eggc/runner.hpp) for all fields.
 
-`report.history` contains per-iteration statistics. For example, place this after
-`run` to see whether conditions are rejecting matches:
-
-```cpp
-for (const auto& step : report.history) {
-    std::cout << "matches=" << step.matches
-              << " condition checks=" << step.condition_checks
-              << " rejected=" << step.condition_rejections
-              << " nodes=" << step.nodes << '\n';
-}
-```
-
-`matches` includes distinct structural matches rejected by conditions.
-`applications` counts applied matches, which may already be known equalities;
-`rewrite_unions` counts actual class merges caused by those applications.
-`report.iterations` includes started partial iterations, and each history entry's
-`completed` field tells you whether application finished for that iteration.
-
-For rules that generate many matches, optional `per_rule_match_limit` enables
-exponential backoff. Set it to a positive initial budget. If a rule has more
-matches, search defers its remaining matches for that iteration and doubles its
-budget for the next iteration. Matches already collected for that rule can still
-be applied. Once a rule completes search within its budget, its budget resets to
-the initial value. The separate global `match_limit` can still stop the run.
+Optional `per_rule_match_limit` sets a positive initial match budget per rule.
+Exceeding it defers the remaining matches and doubles that rule's budget for the
+next iteration. Collected matches can still apply. The budget resets after a
+complete search; the global `match_limit` can still stop the run.
 
 ## Choose an extraction cost
 
-The default `ast_size_cost()` counts every occurrence in the expression tree.
-For example, `(+ x x)` costs 3 even though both children refer to the same class.
-`RecExpr` can share nodes in storage, so its stored node count can differ from
-this cost.
-
-For the smallest tree depth instead, use:
+The default `ast_size_cost()` counts tree nodes, including repeated occurrences:
+`(+ x x)` costs 3. To minimize tree depth instead:
 
 ```cpp
 const auto [depth, shallowest] =
     eggc::Extractor(graph, eggc::ast_depth_cost()).find_best_rec_expr(root);
 ```
 
-A leaf has depth 1; `(+ 6 x)` has depth 2. Choosing size or depth can favor
-different expressions. Neither policy automatically models runtime performance.
-On cost ties, do not rely on a particular printed expression.
+A leaf has depth 1; `(+ 6 x)` has depth 2. These costs describe expression shape,
+not execution time, and ties may produce different printed expressions.
 
-Create a new extractor after modifying the graph. An extractor caches choices
-for the graph revision at construction; querying it after the graph changes
-throws an error. Advanced custom cost policies must be deterministic,
-nondecreasing in child costs, and return a cost strictly greater than every
-child's cost. See [`extract.hpp`](../include/eggc/extract.hpp) for the interface.
+Create a new extractor after modifying and rebuilding the graph: its cached
+choices belong to the revision at construction. Custom cost policies must be
+deterministic, nondecreasing in child costs, and strictly greater than every child
+cost. See [`extract.hpp`](../include/eggc/extract.hpp).
 
 ## Troubleshooting
 
 | Symptom | What to check |
 | --- | --- |
-| No tutorial or custom example target | Configure with `-DEGGC_BUILD_EXAMPLES=ON`; put custom `.cpp` files in `examples/` and rerun configuration. |
-| Cannot find the executable | Check `build/examples/`, or its configuration subdirectory such as `Debug/`. Windows executables end in `.exe`. |
-| `query requires a rebuilt e-graph` | Call `rebuild()` after manual additions or merges, before matching or extraction. |
-| `extractor graph changed after extractor construction` | Rebuild the graph and construct a new extractor. |
-| `unbound rhs variable` | Bind every right-hand-side variable in the left-hand pattern. |
-| `known-nonzero condition requires ConstantAnalysis` | Construct the graph with `std::make_shared<eggc::ConstantAnalysis>()`. |
-| An expected rule does not match | Check operator spelling, child count, operand order, repeated variables, and conditions. |
-| Arithmetic stays symbolic | A plain graph has no constant folding; `ConstantAnalysis` only evaluates binary `+` and `*`. |
-| The run stops before saturation | Inspect `report.reason` and the history. Look for rules that keep generating new expressions before increasing budgets. |
-| `AnalysisConflict` | Your merges or rules have forced incompatible facts into one class, such as two different integer constants. Revisit those equalities. |
+| Missing example target | Enable `EGGC_BUILD_EXAMPLES` and rerun configuration after adding a file. |
+| Query requires a rebuilt graph | Call `rebuild()` after manual additions or merges. |
+| Extractor reports a changed graph | Rebuild and construct a new extractor. |
+| Unbound variable | Bind every replacement or condition variable in the left-hand pattern. |
+| Rule does not match | Check operand order, operator spelling, child count, repeated variables, and conditions. |
+| Arithmetic stays symbolic | Attach `ConstantAnalysis`; it folds only binary `+` and `*`. |
+| `AnalysisConflict` | Check for rules or merges equating incompatible constants. |
 
-## Try it yourself
+**Try it:** remove `add-zero` from the first program. The result becomes
+`(+ 6 (+ x 0))`, with cost 5: analysis still folds the product, but simplifying
+the symbolic sum requires the rule.
 
-1. In the first program, remove `add-zero` but keep constant analysis. What is
-   the cheapest expression now?
-2. Keep `add-zero`, but use a plain `EGraph` instead. What changes?
-3. In the guarded program, try `(/ -3 -3)` and `(/ x x)`. Why do they differ?
-
-<details>
-<summary>Answers</summary>
-
-1. `(+ 6 (+ x 0))`, with AST size 5. Analysis folds the product but cannot give
-   the unknown sum a constant value.
-2. `(+ (* 2 3) x)`, with AST size 5. The rewrite simplifies `(+ x 0)`, but
-   nothing evaluates `(* 2 3)`.
-3. The first becomes `1` because `-3` is known and nonzero. The second stays
-   unchanged because the graph has no fact ruling out `x = 0`.
-
-</details>
-
-Continue to [Equivalences and unsafe rewrites](tutorial_explanations.md) to see
-how an unguarded division rule can make a graph report `0 = 1`. The remaining
-sections describe optional tools for working on the library itself.
+Continue to [Equivalences and unsafe rewrites](tutorial_explanations.md).
+The following tools are optional and intended for library development.
 
 ## Differential verification against Rust egg
 
-Enable the optional test to replay the same operation streams through this
-library and pinned Rust `egg` 0.9.5. Cargo uses the checked-in lockfile:
+This compares operation streams with pinned Rust `egg` 0.9.5. It requires Cargo
+and Python 3; Cargo may fetch dependencies on its first run.
 
 ```sh
 cmake -S . -B build -DEGGC_ENABLE_EGG_DIFFERENTIAL=ON
@@ -318,32 +203,24 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-The normal differential test runs four saved fixtures plus 20 seeded graph and
-20 seeded arithmetic cases. For a larger run or a specific seed:
+The test runs four saved fixtures plus 20 seeded graph and 20 seeded arithmetic
+cases. For a larger run:
 
 ```sh
 python3 tests/differential/check.py build/eggc_differential cargo \
   tests/differential/rust_egg --cases 1000 --seed 0xEE77
 ```
 
-On a mismatch, the driver writes `differential_failure.case`, both outputs,
-and a smaller `.min.case` when reduction succeeds. Replay the saved stream with
-`--replay differential_failure.case`. Case files are tab-separated and start
-with `version<TAB>1`; supported operations are `add`, `merge`, `rebuild`, `eq`,
-`cost`, `fact`, `witness`, `match`, `rule`, and `run`. Query output compares
-equivalence, normalized pattern bindings, extraction costs, and whether an
-extracted term belongs to its requested class. Internal IDs, expression
-choices on ties, and iteration counts are not compared. The arithmetic
-generator also checks the expected truth of the guarded `x / x = 1` equality
-independently of Rust egg.
+Failures produce `differential_failure.case`, both outputs, and a reduced
+`.min.case` when possible. Add `--replay differential_failure.case` to replay a
+failure. Comparisons cover equivalence, pattern bindings, extraction costs, and
+whether extracted terms belong to their classes; IDs, tied expression choices,
+and iteration counts are not compared. See the
+[driver](../tests/differential/check.py) for the case format and options.
 
 ## Benchmarks
 
-Configure with `-DEGGC_BUILD_BENCHMARKS=ON`, build, then run
-`./build/eggc_bench [scale]`. It prints CSV timing rows for worklist and
-full-scan deep congruence, many unrelated classes, and multi-match workloads.
-Use a Release build and repeat runs before drawing performance conclusions.
-
-The incremental rebuild is checked against an all-pairs full-scan reference
-using deterministic randomized add/merge sequences in the normal test suite.
-The Rust differential test may fetch pinned crate dependencies on its first run.
+Configure with `-DEGGC_BUILD_BENCHMARKS=ON`, build, and run
+`./build/eggc_bench [scale]`. It prints CSV timings for worklist and full-scan
+rebuilding and matching workloads. Use a Release build and repeated runs when
+comparing performance.
