@@ -5,8 +5,10 @@
 
 namespace eggc {
 struct Pattern {
+    enum class Kind { Node, Variable };
     std::string op;
     std::vector<Pattern> children;
+    Kind kind = Kind::Node;
     static Pattern var(std::string name);
     static Pattern node(std::string op, std::vector<Pattern> children = {});
     bool is_var() const;

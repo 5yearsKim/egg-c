@@ -151,4 +151,15 @@ std::string to_string(const RecExpr& expr) {
     }
     return out.str();
 }
+
+std::string to_string(const Expr& expr) {
+    std::ostringstream out;
+    if (expr.children.empty()) {
+        out << print_atom(expr.op);
+        return out.str();
+    }
+    out << '(' << print_atom(expr.op);
+    for (const auto& child : expr.children) out << ' ' << to_string(child);
+    return out.str() + ')';
+}
 }

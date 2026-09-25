@@ -1,6 +1,7 @@
 #include "eggc/constant_analysis.hpp"
 #include "eggc/extract.hpp"
 #include "eggc/parser.hpp"
+#include "eggc/runner.hpp"
 #include <iostream>
 #include <memory>
 #include <stdexcept>

@@ -33,6 +33,7 @@ install them and reconfigure to run all checks.
 #include "eggc/constant_analysis.hpp"
 #include "eggc/parser.hpp"
 #include "eggc/extract.hpp"
+#include "eggc/runner.hpp"
 
 eggc::EGraph graph(std::make_shared<eggc::ConstantAnalysis>());
 const auto root = graph.add_expr(eggc::parse_expr("(+ (* 2 3) (+ x 0))"));

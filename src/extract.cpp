@@ -1,7 +1,6 @@
 #include "eggc/extract.hpp"
 #include <algorithm>
 #include <limits>
-#include <sstream>
 #include <stdexcept>
 #include <unordered_map>
 
@@ -29,7 +28,7 @@ CostPolicy ast_depth_cost() {
 
 Extractor::Extractor(const EGraph& graph, CostPolicy cost)
     : graph_(&graph), revision_(graph.revision()) {
-    if (!graph.is_clean()) throw std::logic_error("extractor requires a rebuilt e-graph");
+    graph.require_clean();
     if (!cost) throw std::invalid_argument("extractor requires a cost policy");
 
     const auto ids = graph.classes();
@@ -141,11 +140,4 @@ Expr extract(const EGraph& graph, Id root) {
     return Extractor(graph).find_best(root).expression;
 }
 
-std::string to_string(const Expr& expr) {
-    if (expr.children.empty()) return expr.op;
-    std::ostringstream out;
-    out << '(' << expr.op;
-    for (const auto& child : expr.children) out << ' ' << to_string(child);
-    return out.str() + ')';
-}
 }

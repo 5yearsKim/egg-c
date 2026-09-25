@@ -7,11 +7,11 @@
 #include <functional>
 
 namespace eggc {
-Pattern Pattern::var(std::string name) { return Pattern{"?" + name, {}}; }
+Pattern Pattern::var(std::string name) { return Pattern{"?" + name, {}, Kind::Variable}; }
 Pattern Pattern::node(std::string op, std::vector<Pattern> children) {
-    return Pattern{std::move(op), std::move(children)};
+    return Pattern{std::move(op), std::move(children), Kind::Node};
 }
-bool Pattern::is_var() const { return !op.empty() && op[0] == '?'; }
+bool Pattern::is_var() const { return kind == Kind::Variable; }
 
 namespace {
 using MatchKey = std::vector<std::pair<std::string, Id>>;
@@ -67,6 +67,7 @@ std::vector<Substitution> match(const EGraph& graph, const Pattern& pattern, Id 
 bool search_matches(const EGraph& graph, const Pattern& pattern, Id eclass,
                     const std::function<bool(const Substitution&)>& on_match,
                     const std::function<bool()>& should_stop) {
+    graph.require_clean();
     std::set<MatchKey> seen;
     return enumerate(graph, pattern, eclass, {}, [&](const Substitution& found) {
         Substitution canonical = found;

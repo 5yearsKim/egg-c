@@ -15,6 +15,9 @@ struct ExprNode {
     std::vector<ExprId> children;
 };
 
+// A tree view of an expression, convenient for callers that need nested nodes.
+struct Expr { std::string op; std::vector<Expr> children; };
+
 // A bottom-up expression DAG: every child must refer to an earlier node.
 struct RecExpr {
     std::vector<ExprNode> nodes;
@@ -23,4 +26,5 @@ struct RecExpr {
 
 RecExpr parse_expr(std::string_view text);
 std::string to_string(const RecExpr& expr);
+std::string to_string(const Expr& expr);
 }

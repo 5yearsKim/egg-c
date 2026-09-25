@@ -21,6 +21,7 @@ public:
     Id find(Id id) const;
     bool merge(Id a, Id b);
     void rebuild();
+    // Class-content queries require rebuild() after add() or merge().
     const std::vector<ENode>& nodes(Id id) const;
     const std::vector<Id>& classes_for_op(const std::string& op, std::size_t arity) const;
     std::vector<Id> classes() const;
@@ -29,10 +30,15 @@ public:
     std::uint64_t revision() const noexcept { return revision_; }
     std::uint64_t analysis_revision() const noexcept { return analysis_revision_; }
     bool is_clean() const noexcept { return clean_; }
+    void require_clean() const;
     bool has_analysis() const noexcept { return static_cast<bool>(analysis_); }
     const std::any& analysis_data(Id id) const;
 
 private:
+    void close_congruence();
+    bool propagate_analysis();
+    bool compact_nodes();
+    void rebuild_indexes();
     friend void testing::rebuild_full_scan(EGraph& graph);
     std::vector<Id> parent_;
     std::vector<unsigned> rank_;

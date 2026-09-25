@@ -6,6 +6,10 @@
 namespace eggc {
 EGraph::EGraph(std::shared_ptr<EClassAnalysis> analysis) : analysis_(std::move(analysis)) {}
 
+void EGraph::require_clean() const {
+    if (!clean_) throw std::logic_error("query requires a rebuilt e-graph");
+}
+
 const std::any& EGraph::analysis_data(Id id) const {
     if (!analysis_) throw std::logic_error("e-graph has no analysis");
     return analysis_data_.at(find(id));
@@ -79,121 +83,125 @@ bool EGraph::merge(Id a, Id b) {
     clean_ = false;
     return true;
 }
-void EGraph::rebuild() {
+void EGraph::close_congruence() {
     struct NodeUse { Id owner; std::size_t index; };
-    bool repeat;
-    do {
-        repeat = false;
-        std::unordered_map<ENode, Id, ENodeHash> fresh;
-        std::vector<std::vector<NodeUse>> uses(classes_.size());
-        std::vector<std::vector<unsigned char>> queued(classes_.size());
-        for (std::size_t owner = 0; owner < classes_.size(); ++owner)
-            queued[owner].resize(classes_[owner].size(), 0);
-        std::deque<NodeUse> worklist;
+    std::unordered_map<ENode, Id, ENodeHash> fresh;
+    std::vector<std::vector<NodeUse>> uses(classes_.size());
+    std::vector<std::vector<unsigned char>> queued(classes_.size());
+    for (std::size_t owner = 0; owner < classes_.size(); ++owner)
+        queued[owner].resize(classes_[owner].size(), 0);
+    std::deque<NodeUse> worklist;
 
-        const auto enqueue = [&](NodeUse use) {
-            if (!queued[use.owner][use.index]) {
-                queued[use.owner][use.index] = 1;
-                worklist.push_back(use);
-            }
-        };
-        const auto enqueue_uses = [&](Id a, Id b) {
-            for (const auto use : uses[a]) enqueue(use);
-            for (const auto use : uses[b]) enqueue(use);
-        };
-
-        std::vector<std::pair<Id, Id>> initial_collisions;
-        for (Id old = 0; old < classes_.size(); ++old) {
-            const Id owner = find(old);
-            for (std::size_t index = 0; index < classes_[old].size(); ++index) {
-                auto& node = classes_[old][index];
-                for (Id& child : node.children) {
-                    child = find(child);
-                    uses[child].push_back({old, index});
-                }
-                const auto inserted = fresh.emplace(node, owner);
-                if (!inserted.second) {
-                    const Id other = find(inserted.first->second);
-                    if (find(owner) != other) initial_collisions.emplace_back(owner, other);
-                }
-            }
+    const auto enqueue = [&](NodeUse use) {
+        if (!queued[use.owner][use.index]) {
+            queued[use.owner][use.index] = 1;
+            worklist.push_back(use);
         }
+    };
+    const auto enqueue_uses = [&](Id a, Id b) {
+        for (const auto use : uses[a]) enqueue(use);
+        for (const auto use : uses[b]) enqueue(use);
+    };
 
-        const auto merge_and_schedule = [&](Id lhs, Id rhs) {
-            lhs = find(lhs); rhs = find(rhs);
-            if (lhs == rhs) return;
-            enqueue_uses(lhs, rhs);
-            merge(lhs, rhs);
-            const Id root = find(lhs);
-            const Id dead = root == lhs ? rhs : lhs;
-            uses[root].insert(uses[root].end(), uses[dead].begin(), uses[dead].end());
-            uses[dead].clear();
-        };
-
-        for (const auto collision : initial_collisions)
-            merge_and_schedule(collision.first, collision.second);
-
-        while (!worklist.empty()) {
-            const auto use = worklist.front();
-            worklist.pop_front();
-            queued[use.owner][use.index] = 0;
-            auto& node = classes_[use.owner][use.index];
+    std::vector<std::pair<Id, Id>> initial_collisions;
+    for (Id old = 0; old < classes_.size(); ++old) {
+        const Id owner = find(old);
+        for (std::size_t index = 0; index < classes_[old].size(); ++index) {
+            auto& node = classes_[old][index];
             for (Id& child : node.children) {
                 child = find(child);
-                uses[child].push_back(use);
+                uses[child].push_back({old, index});
             }
-            const Id owner = find(use.owner);
             const auto inserted = fresh.emplace(node, owner);
             if (!inserted.second) {
                 const Id other = find(inserted.first->second);
-                if (owner != other) merge_and_schedule(owner, other);
+                if (find(owner) != other) initial_collisions.emplace_back(owner, other);
             }
         }
+    }
 
-        if (analysis_) {
-            for (Id old = 0; old < classes_.size(); ++old) {
-                const Id id = find(old);
-                for (const auto& node : classes_[old]) {
-                    const auto inferred = analysis_->make(*this, node);
-                    std::any merged_data = analysis_data_[id];
-                    const auto result = analysis_->merge(merged_data, inferred);
-                    if (result == AnalysisMerge::Conflict)
-                        throw AnalysisConflict("e-class analysis conflict while rebuilding");
-                    if (result == AnalysisMerge::Changed) {
-                        analysis_data_[id] = std::move(merged_data);
-                        ++analysis_revision_;
-                        ++revision_;
-                        repeat = true;
-                    }
-                }
-            }
-            for (const Id id : classes()) {
-                const auto before = revision_;
-                analysis_->modify(*this, id);
-                if (revision_ != before) repeat = true;
+    const auto merge_and_schedule = [&](Id lhs, Id rhs) {
+        lhs = find(lhs); rhs = find(rhs);
+        if (lhs == rhs) return;
+        enqueue_uses(lhs, rhs);
+        merge(lhs, rhs);
+        const Id root = find(lhs);
+        const Id dead = root == lhs ? rhs : lhs;
+        uses[root].insert(uses[root].end(), uses[dead].begin(), uses[dead].end());
+        uses[dead].clear();
+    };
+
+    for (const auto collision : initial_collisions)
+        merge_and_schedule(collision.first, collision.second);
+
+    while (!worklist.empty()) {
+        const auto use = worklist.front();
+        worklist.pop_front();
+        queued[use.owner][use.index] = 0;
+        auto& node = classes_[use.owner][use.index];
+        for (Id& child : node.children) {
+            child = find(child);
+            uses[child].push_back(use);
+        }
+        const Id owner = find(use.owner);
+        const auto inserted = fresh.emplace(node, owner);
+        if (!inserted.second) {
+            const Id other = find(inserted.first->second);
+            if (owner != other) merge_and_schedule(owner, other);
+        }
+    }
+}
+
+bool EGraph::propagate_analysis() {
+    if (!analysis_) return false;
+    bool changed = false;
+    for (Id old = 0; old < classes_.size(); ++old) {
+        const Id id = find(old);
+        for (const auto& node : classes_[old]) {
+            const auto inferred = analysis_->make(*this, node);
+            std::any merged_data = analysis_data_[id];
+            const auto result = analysis_->merge(merged_data, inferred);
+            if (result == AnalysisMerge::Conflict)
+                throw AnalysisConflict("e-class analysis conflict while rebuilding");
+            if (result == AnalysisMerge::Changed) {
+                analysis_data_[id] = std::move(merged_data);
+                ++analysis_revision_;
+                ++revision_;
+                changed = true;
             }
         }
+    }
+    for (const Id id : classes()) {
+        const auto before = revision_;
+        analysis_->modify(*this, id);
+        if (revision_ != before) changed = true;
+    }
+    return changed;
+}
 
-        if (repeat) continue;
-        std::vector<std::vector<ENode>> compact(classes_.size());
-        std::unordered_map<ENode, Id, ENodeHash> compact_memo;
-        for (Id old = 0; old < classes_.size(); ++old) {
-            const Id owner = find(old);
-            for (const auto& original : classes_[old]) {
-                ENode node = original;
-                for (Id& child : node.children) child = find(child);
-                const auto inserted = compact_memo.emplace(node, owner);
-                if (inserted.second) compact[owner].push_back(std::move(node));
-                else if (find(owner) != find(inserted.first->second)) {
-                    merge(find(owner), find(inserted.first->second));
-                    repeat = true;
-                }
+bool EGraph::compact_nodes() {
+    bool changed = false;
+    std::vector<std::vector<ENode>> compact(classes_.size());
+    std::unordered_map<ENode, Id, ENodeHash> compact_memo;
+    for (Id old = 0; old < classes_.size(); ++old) {
+        const Id owner = find(old);
+        for (const auto& original : classes_[old]) {
+            ENode node = original;
+            for (Id& child : node.children) child = find(child);
+            const auto inserted = compact_memo.emplace(node, owner);
+            if (inserted.second) compact[owner].push_back(std::move(node));
+            else if (find(owner) != find(inserted.first->second)) {
+                merge(find(owner), find(inserted.first->second));
+                changed = true;
             }
         }
-        if (repeat) continue;
-        classes_.swap(compact);
-    } while (repeat);
+    }
+    if (changed) return false;
+    classes_.swap(compact);
+    return true;
+}
 
+void EGraph::rebuild_indexes() {
     stored_node_count_ = 0;
     for (Id id = 0; id < classes_.size(); ++id)
         if (find(id) == id) stored_node_count_ += classes_[id].size();
@@ -207,11 +215,23 @@ void EGraph::rebuild() {
             if (candidates.empty() || candidates.back() != id) candidates.push_back(id);
         }
     }
+}
+
+void EGraph::rebuild() {
+    while (true) {
+        close_congruence();
+        if (propagate_analysis()) continue;
+        if (compact_nodes()) break;
+    }
+    rebuild_indexes();
     clean_ = true;
 }
-const std::vector<ENode>& EGraph::nodes(Id id) const { return classes_.at(find(id)); }
+const std::vector<ENode>& EGraph::nodes(Id id) const {
+    require_clean();
+    return classes_.at(find(id));
+}
 const std::vector<Id>& EGraph::classes_for_op(const std::string& op, std::size_t arity) const {
-    if (!clean_) throw std::logic_error("operator index requires a rebuilt e-graph");
+    require_clean();
     static const std::vector<Id> empty;
     const auto found = op_index_.find({op, arity});
     return found == op_index_.end() ? empty : found->second;
@@ -226,48 +246,4 @@ std::size_t EGraph::node_count() const {
     return stored_node_count_;
 }
 
-namespace testing {
-void rebuild_full_scan(EGraph& graph) {
-    if (graph.analysis_) throw std::logic_error("full-scan reference does not support analyses");
-    bool changed;
-    do {
-        changed = false;
-        std::unordered_map<ENode, Id, ENodeHash> fresh;
-        for (Id old = 0; old < graph.classes_.size(); ++old) {
-            const Id owner = graph.find(old);
-            for (const auto& original : graph.classes_[old]) {
-                ENode node = original;
-                for (Id& child : node.children) child = graph.find(child);
-                const auto inserted = fresh.emplace(node, owner);
-                if (!inserted.second && graph.merge(owner, inserted.first->second)) changed = true;
-            }
-        }
-    } while (changed);
-
-    std::vector<std::vector<ENode>> compact(graph.classes_.size());
-    std::unordered_map<ENode, Id, ENodeHash> fresh;
-    for (Id old = 0; old < graph.classes_.size(); ++old) {
-        const Id owner = graph.find(old);
-        for (const auto& original : graph.classes_[old]) {
-            ENode node = original;
-            for (Id& child : node.children) child = graph.find(child);
-            if (fresh.emplace(node, owner).second) compact[owner].push_back(std::move(node));
-        }
-    }
-    graph.classes_.swap(compact);
-    graph.stored_node_count_ = 0;
-    graph.memo_.clear();
-    graph.op_index_.clear();
-    for (Id id = 0; id < graph.classes_.size(); ++id) {
-        if (graph.find(id) != id) continue;
-        graph.stored_node_count_ += graph.classes_[id].size();
-        for (const auto& node : graph.classes_[id]) {
-            graph.memo_.emplace(node, id);
-            auto& candidates = graph.op_index_[{node.op, node.children.size()}];
-            if (candidates.empty() || candidates.back() != id) candidates.push_back(id);
-        }
-    }
-    graph.clean_ = true;
-}
-}
 }

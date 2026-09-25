@@ -1,4 +1,5 @@
 #include "eggc/parser.hpp"
+#include "eggc/runner.hpp"
 #include "eggc/testing.hpp"
 #include <chrono>
 #include <cstdlib>

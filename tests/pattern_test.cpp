@@ -5,6 +5,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <stdexcept>
 
 namespace {
 using Bindings = std::vector<std::pair<std::string, eggc::Id>>;
@@ -148,12 +149,42 @@ bool merged_ids_are_canonical_and_cycles_terminate() {
                   eggc::match(graph, nested, a),
                   {binding("?x", graph.find(a))});
 }
+
+bool dirty_graph_queries_fail_explicitly() {
+    eggc::EGraph graph;
+    const auto a = graph.add("a");
+    const auto b = graph.add("b");
+    graph.rebuild();
+    graph.merge(a, b);
+    bool nodes_rejected = false;
+    bool match_rejected = false;
+    try { (void)graph.nodes(a); }
+    catch (const std::logic_error&) { nodes_rejected = true; }
+    try { (void)eggc::match(graph, eggc::Pattern::node("b"), a); }
+    catch (const std::logic_error&) { match_rejected = true; }
+    graph.rebuild();
+    return nodes_rejected && match_rejected &&
+           expect("rebuilt graph exposes merged class members", graph,
+                  eggc::match(graph, eggc::Pattern::node("b"), a), {Bindings{}});
+}
+
+bool operator_names_are_not_inferred_as_variables() {
+    eggc::EGraph graph;
+    const auto id = graph.add("?literal");
+    graph.rebuild();
+    const auto pattern = eggc::Pattern::node("?literal");
+    return !pattern.is_var() &&
+           expect("literal operator with leading question mark", graph,
+                  eggc::match(graph, pattern, id), {Bindings{}});
+}
 }
 
 int main() {
     const bool passed = multiple_alternatives() && backtracks_for_later_child() &&
                         independent_alternatives_form_combinations() &&
                         variables_literals_and_repeated_variables() &&
-                        merged_ids_are_canonical_and_cycles_terminate();
+                        merged_ids_are_canonical_and_cycles_terminate() &&
+                        dirty_graph_queries_fail_explicitly() &&
+                        operator_names_are_not_inferred_as_variables();
     return passed ? 0 : 1;
 }

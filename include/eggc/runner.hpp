@@ -1,13 +1,11 @@
 #pragma once
-#include "pattern.hpp"
+#include "rewrite.hpp"
 #include <chrono>
 #include <optional>
 #include <string>
 #include <vector>
 
 namespace eggc {
-struct Rewrite { std::string name; Pattern lhs; Pattern rhs; };
-void validate_rewrite(const Rewrite& rewrite);
 enum class StopReason { Saturated, IterationLimit, NodeLimit, TimeLimit, MatchLimit };
 struct RunOptions {
     std::size_t iteration_limit = 10;

@@ -1,6 +1,6 @@
 #pragma once
 #include "expr.hpp"
-#include "runner.hpp"
+#include "rewrite.hpp"
 #include <string_view>
 
 namespace eggc {

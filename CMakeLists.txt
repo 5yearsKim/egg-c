@@ -15,6 +15,11 @@ target_include_directories(eggc PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_features(eggc PUBLIC cxx_std_17)
 set_target_properties(eggc PROPERTIES CXX_EXTENSIONS OFF)
 
+if(BUILD_TESTING OR EGGC_BUILD_BENCHMARKS)
+    add_library(eggc_test_support STATIC tests/support/full_scan.cpp)
+    target_link_libraries(eggc_test_support PUBLIC eggc)
+endif()
+
 add_executable(simplify examples/simplify.cpp)
 target_link_libraries(simplify PRIVATE eggc)
 
@@ -44,13 +49,13 @@ if(BUILD_TESTING)
     add_test(NAME analysis_test COMMAND analysis_test)
 
     add_executable(egraph_test tests/egraph_test.cpp)
-    target_link_libraries(egraph_test PRIVATE eggc)
+    target_link_libraries(egraph_test PRIVATE eggc_test_support)
     add_test(NAME egraph_test COMMAND egraph_test)
 endif()
 
 if(EGGC_BUILD_BENCHMARKS)
     add_executable(eggc_bench benchmarks/eggc_bench.cpp)
-    target_link_libraries(eggc_bench PRIVATE eggc)
+    target_link_libraries(eggc_bench PRIVATE eggc_test_support)
 endif()
 
 if(EGGC_ENABLE_EGG_DIFFERENTIAL AND BUILD_TESTING)

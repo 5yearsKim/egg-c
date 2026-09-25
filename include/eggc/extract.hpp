@@ -5,8 +5,6 @@
 #include <optional>
 
 namespace eggc {
-struct Expr { std::string op; std::vector<Expr> children; };
-
 // Returning nullopt means the node cost is unrepresentable or inapplicable.
 // A valid policy must be deterministic, nondecreasing, and return a cost
 // strictly greater than each child cost.
@@ -42,5 +40,4 @@ private:
 };
 
 Expr extract(const EGraph& graph, Id root);
-std::string to_string(const Expr& expr);
 }

@@ -106,6 +106,18 @@ bool flat_reconstruction_preserves_sharing_and_handles_depth() {
     return check(parsed.nodes.size() == 1501, "deep S-expressions parse iteratively") &&
            check(eggc::to_string(parsed) == deep, "deep flat expressions print iteratively");
 }
+
+bool tree_printing_uses_expression_quoting() {
+    eggc::EGraph graph;
+    const auto root = graph.add_expr(eggc::parse_expr("(\"op name\" \"hello world\")"));
+    graph.rebuild();
+    const auto tree = eggc::Extractor(graph).find_best(root).expression;
+    const auto printed = eggc::to_string(tree);
+    return check(printed == "(\"op name\" \"hello world\")",
+                 "tree output quotes operators and atoms") &&
+           check(eggc::to_string(eggc::parse_expr(printed)) == printed,
+                 "tree output parses as the same expression");
+}
 }
 
 int main() {
@@ -114,6 +126,7 @@ int main() {
                         stale_and_dirty_graphs_are_rejected() &&
                         overflowed_candidates_are_skipped() &&
                         built_in_cost_detects_size_overflow() &&
-                        flat_reconstruction_preserves_sharing_and_handles_depth();
+                        flat_reconstruction_preserves_sharing_and_handles_depth() &&
+                        tree_printing_uses_expression_quoting();
     return passed ? 0 : 1;
 }

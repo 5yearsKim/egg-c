@@ -1,7 +1,7 @@
 #include "eggc/runner.hpp"
 #include <chrono>
 #include <limits>
-#include <set>
+#include <functional>
 #include <stdexcept>
 #include <utility>
 
@@ -9,33 +9,85 @@ namespace eggc {
 namespace {
 using Clock = std::chrono::steady_clock;
 
-void collect_variables(const Pattern& pattern, std::set<std::string>& variables,
-                       const std::string& rule_name, const char* side) {
-    if (pattern.is_var()) {
-        if (!pattern.children.empty())
-            throw std::invalid_argument("rewrite '" + rule_name + "': variable " + pattern.op +
-                                        " has children in " + side);
-        variables.insert(pattern.op);
-        return;
-    }
-    for (const auto& child : pattern.children)
-        collect_variables(child, variables, rule_name, side);
-}
-
 void validate_rules(const std::vector<Rewrite>& rules) {
     for (const auto& rule : rules) validate_rewrite(rule);
 }
+
+struct PendingMatch {
+    std::size_t rule_index;
+    Id target;
+    Substitution substitution;
+};
+
+struct SearchResult {
+    std::vector<PendingMatch> pending;
+    std::size_t backed_off_rules = 0;
+    bool any_backoff = false;
+    std::optional<StopReason> stop;
+};
+
+SearchResult search_iteration(const EGraph& graph, const std::vector<Rewrite>& rules,
+                              const RunOptions& options, std::vector<std::size_t>& rule_budgets,
+                              const std::function<bool()>& timed_out) {
+    SearchResult result;
+    for (std::size_t rule_index = 0; rule_index < rules.size(); ++rule_index) {
+        std::size_t rule_matches = 0;
+        bool rule_backed_off = false;
+        const auto candidates = rules[rule_index].lhs.is_var()
+            ? graph.classes()
+            : graph.classes_for_op(rules[rule_index].lhs.op,
+                                   rules[rule_index].lhs.children.size());
+        for (Id id : candidates) {
+            if (timed_out()) { result.stop = StopReason::TimeLimit; break; }
+            const bool completed = search_matches(
+                graph, rules[rule_index].lhs, id,
+                [&](const Substitution& subst) {
+                    if (options.per_rule_match_limit && rule_matches >= rule_budgets[rule_index]) {
+                        rule_backed_off = true;
+                        return false;
+                    }
+                    if (options.match_limit && result.pending.size() >= *options.match_limit) {
+                        result.stop = StopReason::MatchLimit;
+                        return false;
+                    }
+                    result.pending.push_back({rule_index, id, subst});
+                    ++rule_matches;
+                    return true;
+                }, timed_out);
+            if (!completed) {
+                if (!rule_backed_off && !result.stop) result.stop = StopReason::TimeLimit;
+                break;
+            }
+        }
+        if (rule_backed_off) {
+            result.any_backoff = true;
+            ++result.backed_off_rules;
+            const auto max = std::numeric_limits<std::size_t>::max();
+            rule_budgets[rule_index] = rule_budgets[rule_index] > max / 2
+                ? max : rule_budgets[rule_index] * 2;
+        } else if (options.per_rule_match_limit) {
+            rule_budgets[rule_index] = *options.per_rule_match_limit;
+        }
+        if (result.stop) break;
+    }
+    if (timed_out() && result.stop != StopReason::MatchLimit) result.stop = StopReason::TimeLimit;
+    return result;
 }
 
-void validate_rewrite(const Rewrite& rule) {
-    std::set<std::string> lhs_variables;
-    std::set<std::string> rhs_variables;
-    collect_variables(rule.lhs, lhs_variables, rule.name, "lhs");
-    collect_variables(rule.rhs, rhs_variables, rule.name, "rhs");
-    for (const auto& variable : rhs_variables)
-        if (!lhs_variables.count(variable))
-            throw std::invalid_argument("rewrite '" + rule.name +
-                                        "' has unbound rhs variable " + variable);
+std::optional<StopReason> apply_matches(EGraph& graph, const std::vector<Rewrite>& rules,
+                                        const std::vector<PendingMatch>& pending,
+                                        const RunOptions& options, IterationStats& stats,
+                                        const std::function<bool()>& timed_out) {
+    for (const auto& item : pending) {
+        if (timed_out()) return StopReason::TimeLimit;
+        const Id target = graph.find(item.target);
+        const Id rhs = instantiate(graph, rules[item.rule_index].rhs, item.substitution);
+        ++stats.applications;
+        if (graph.merge(target, rhs)) ++stats.rewrite_unions;
+        if (graph.node_count() >= options.node_limit) return StopReason::NodeLimit;
+    }
+    return std::nullopt;
+}
 }
 
 RunReport run(EGraph& graph, const std::vector<Rewrite>& rules, const RunOptions& options) {
@@ -65,61 +117,13 @@ RunReport run(EGraph& graph, const std::vector<Rewrite>& rules, const RunOptions
         IterationStats stats;
         const std::uint64_t revision_before = graph.revision();
         const std::uint64_t analysis_revision_before = graph.analysis_revision();
-        std::vector<std::pair<std::size_t, std::pair<Id, Substitution>>> pending;
-        bool match_limit_hit = false;
-        bool search_complete = true;
-        bool any_backoff = false;
         const auto search_start = Clock::now();
-
-        for (std::size_t rule_index = 0; rule_index < rules.size() && search_complete; ++rule_index) {
-            std::size_t rule_matches = 0;
-            bool rule_backed_off = false;
-            const auto candidates = rules[rule_index].lhs.is_var()
-                ? graph.classes()
-                : graph.classes_for_op(rules[rule_index].lhs.op,
-                                       rules[rule_index].lhs.children.size());
-            for (Id id : candidates) {
-                if (timed_out()) { search_complete = false; break; }
-                const bool completed = search_matches(
-                    graph, rules[rule_index].lhs, id,
-                    [&](const Substitution& subst) {
-                        if (options.per_rule_match_limit &&
-                            rule_matches >= rule_budgets[rule_index]) {
-                            rule_backed_off = true;
-                            return false;
-                        }
-                        if (options.match_limit && stats.matches >= *options.match_limit) {
-                            match_limit_hit = true;
-                            return false;
-                        }
-                        pending.push_back({rule_index, {id, subst}});
-                        ++rule_matches;
-                        ++stats.matches;
-                        return true;
-                    }, timed_out);
-                if (!completed) {
-                    if (rule_backed_off && !match_limit_hit) {
-                        any_backoff = true;
-                        break;
-                    }
-                    search_complete = false;
-                    break;
-                }
-            }
-            if (rule_backed_off) {
-                any_backoff = true;
-                ++stats.backed_off_rules;
-                const auto max = std::numeric_limits<std::size_t>::max();
-                rule_budgets[rule_index] = rule_budgets[rule_index] > max / 2
-                    ? max : rule_budgets[rule_index] * 2;
-            } else if (options.per_rule_match_limit) {
-                rule_budgets[rule_index] = *options.per_rule_match_limit;
-            }
-        }
+        const auto search = search_iteration(graph, rules, options, rule_budgets, timed_out);
         stats.search_time = Clock::now() - search_start;
-
-        if (match_limit_hit || timed_out() || !search_complete) {
-            report.reason = match_limit_hit ? StopReason::MatchLimit : StopReason::TimeLimit;
+        stats.matches = search.pending.size();
+        stats.backed_off_rules = search.backed_off_rules;
+        if (search.stop) {
+            report.reason = *search.stop;
             stats.nodes = graph.node_count();
             stats.classes = graph.class_count();
             report.nodes = stats.nodes;
@@ -128,17 +132,7 @@ RunReport run(EGraph& graph, const std::vector<Rewrite>& rules, const RunOptions
         }
 
         const auto apply_start = Clock::now();
-        bool node_limit_hit = false;
-        bool time_limit_hit = false;
-        for (const auto& item : pending) {
-            if (timed_out()) { time_limit_hit = true; break; }
-            const std::size_t rule_index = item.first;
-            const Id target = graph.find(item.second.first);
-            const Id rhs = instantiate(graph, rules[rule_index].rhs, item.second.second);
-            ++stats.applications;
-            if (graph.merge(target, rhs)) ++stats.rewrite_unions;
-            if (graph.node_count() >= options.node_limit) { node_limit_hit = true; break; }
-        }
+        const auto apply_stop = apply_matches(graph, rules, search.pending, options, stats, timed_out);
         stats.apply_time = Clock::now() - apply_start;
 
         const std::size_t classes_before_rebuild = graph.class_count();
@@ -150,19 +144,19 @@ RunReport run(EGraph& graph, const std::vector<Rewrite>& rules, const RunOptions
         stats.analysis_changes = static_cast<std::size_t>(graph.analysis_revision() - analysis_revision_before);
         stats.nodes = graph.node_count();
         stats.classes = classes_after_rebuild;
-        stats.completed = !node_limit_hit && !time_limit_hit;
+        stats.completed = !apply_stop;
         report.nodes = stats.nodes;
         report.history.push_back(stats);
 
-        if (node_limit_hit || report.nodes >= options.node_limit) {
+        if (apply_stop == StopReason::NodeLimit || report.nodes >= options.node_limit) {
             report.reason = StopReason::NodeLimit;
             return report;
         }
-        if (time_limit_hit || timed_out()) {
+        if (apply_stop == StopReason::TimeLimit || timed_out()) {
             report.reason = StopReason::TimeLimit;
             return report;
         }
-        if (graph.revision() == revision_before && !any_backoff) {
+        if (graph.revision() == revision_before && !search.any_backoff) {
             report.reason = StopReason::Saturated;
             return report;
         }
