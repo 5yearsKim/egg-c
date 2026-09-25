@@ -23,6 +23,12 @@ endif()
 add_executable(simplify examples/simplify.cpp)
 target_link_libraries(simplify PRIVATE eggc)
 
+add_executable(tutorial_getting_started examples/tutorial_getting_started.cpp)
+target_link_libraries(tutorial_getting_started PRIVATE eggc)
+
+add_executable(tutorial_explanations examples/tutorial_explanations.cpp)
+target_link_libraries(tutorial_explanations PRIVATE eggc)
+
 if(BUILD_TESTING)
     add_executable(simplify_test tests/simplify_test.cpp)
     target_link_libraries(simplify_test PRIVATE eggc)

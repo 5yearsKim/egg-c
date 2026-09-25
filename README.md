@@ -11,6 +11,10 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
+The C++ versions of the Rust `egg` tutorials are documented in
+[getting started](docs/tutorial_getting_started.md) and
+[equivalences and unsafe rewrites](docs/tutorial_explanations.md).
+
 ## Lint and format
 
 Install `clang-format` and `clang-tidy`, then configure the project as usual.
