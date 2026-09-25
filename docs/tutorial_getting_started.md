@@ -5,9 +5,9 @@ This is the C++ version of Rust `egg`'s [getting-started tutorial](https://egrap
 From the repository root, build and run it with CMake and a C++17 compiler:
 
 ```sh
-cmake -S . -B build
+cmake -S . -B build -DEGGC_BUILD_EXAMPLES=ON
 cmake --build build --target tutorial_getting_started
-./build/tutorial_getting_started
+./build/examples/tutorial_getting_started
 ```
 
 First, parse an expression and add the same structure to an e-graph. Its two IDs refer to the same e-class after rebuilding:

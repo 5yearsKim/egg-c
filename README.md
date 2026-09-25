@@ -11,6 +11,11 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
+Examples are built by default. Configure with `-DEGGC_BUILD_EXAMPLES=OFF` to
+skip them. Example executables are placed in `build/examples/`. Test
+executables are placed in `build/Testing/` and can be run through CTest as
+shown above.
+
 The C++ versions of the Rust `egg` tutorials are documented in
 [getting started](docs/tutorial_getting_started.md) and
 [equivalences and unsafe rewrites](docs/tutorial_explanations.md).

@@ -5,9 +5,9 @@ This adapts Rust `egg`'s [explanations tutorial](https://egraphs-good.github.io/
 From the repository root, build and run it with CMake and a C++17 compiler:
 
 ```sh
-cmake -S . -B build
+cmake -S . -B build -DEGGC_BUILD_EXAMPLES=ON
 cmake --build build --target tutorial_explanations
-./build/tutorial_explanations
+./build/examples/tutorial_explanations
 ```
 
 The example uses the original five rewrites, including division rules that are unsafe when the denominator is zero:

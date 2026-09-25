@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 project(eggc VERSION 0.1.0 LANGUAGES CXX)
 
 include(CTest)
+option(EGGC_BUILD_EXAMPLES "Build example executables" ON)
 option(EGGC_BUILD_BENCHMARKS "Build standalone e-graph benchmarks" OFF)
 option(EGGC_ENABLE_EGG_DIFFERENTIAL "Enable optional differential checks against Rust egg" OFF)
 option(EGGC_ENABLE_LINT "Add clang-format and clang-tidy targets when available" ON)
@@ -20,47 +21,27 @@ if(BUILD_TESTING OR EGGC_BUILD_BENCHMARKS)
     target_link_libraries(eggc_test_support PUBLIC eggc)
 endif()
 
-add_executable(simplify examples/simplify.cpp)
-target_link_libraries(simplify PRIVATE eggc)
-
-add_executable(tutorial_getting_started examples/tutorial_getting_started.cpp)
-target_link_libraries(tutorial_getting_started PRIVATE eggc)
-
-add_executable(tutorial_explanations examples/tutorial_explanations.cpp)
-target_link_libraries(tutorial_explanations PRIVATE eggc)
+if(EGGC_BUILD_EXAMPLES)
+    file(GLOB EGGC_EXAMPLE_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/examples/*.cpp")
+    foreach(example_source IN LISTS EGGC_EXAMPLE_SOURCES)
+        get_filename_component(example_name "${example_source}" NAME_WE)
+        add_executable(${example_name} "${example_source}")
+        target_link_libraries(${example_name} PRIVATE eggc)
+        set_target_properties(${example_name} PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/examples")
+    endforeach()
+endif()
 
 if(BUILD_TESTING)
-    add_executable(simplify_test tests/simplify_test.cpp)
-    target_link_libraries(simplify_test PRIVATE eggc)
-    add_test(NAME simplify_test COMMAND simplify_test)
-
-    add_executable(pattern_test tests/pattern_test.cpp)
-    target_link_libraries(pattern_test PRIVATE eggc)
-    add_test(NAME pattern_test COMMAND pattern_test)
-
-    add_executable(runner_test tests/runner_test.cpp)
-    target_link_libraries(runner_test PRIVATE eggc)
-    add_test(NAME runner_test COMMAND runner_test)
-
-    add_executable(extract_test tests/extract_test.cpp)
-    target_link_libraries(extract_test PRIVATE eggc)
-    add_test(NAME extract_test COMMAND extract_test)
-
-    add_executable(expr_test tests/expr_test.cpp)
-    target_link_libraries(expr_test PRIVATE eggc)
-    add_test(NAME expr_test COMMAND expr_test)
-
-    add_executable(analysis_test tests/analysis_test.cpp)
-    target_link_libraries(analysis_test PRIVATE eggc)
-    add_test(NAME analysis_test COMMAND analysis_test)
-
-    add_executable(condition_test tests/condition_test.cpp)
-    target_link_libraries(condition_test PRIVATE eggc)
-    add_test(NAME condition_test COMMAND condition_test)
-
-    add_executable(egraph_test tests/egraph_test.cpp)
-    target_link_libraries(egraph_test PRIVATE eggc_test_support)
-    add_test(NAME egraph_test COMMAND egraph_test)
+    file(GLOB EGGC_TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tests/*_test.cpp")
+    foreach(test_source IN LISTS EGGC_TEST_SOURCES)
+        get_filename_component(test_name "${test_source}" NAME_WE)
+        add_executable(${test_name} "${test_source}")
+        target_link_libraries(${test_name} PRIVATE eggc_test_support)
+        set_target_properties(${test_name} PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Testing")
+        add_test(NAME ${test_name} COMMAND ${test_name})
+    endforeach()
 endif()
 
 if(EGGC_BUILD_BENCHMARKS)
