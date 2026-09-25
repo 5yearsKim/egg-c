@@ -24,6 +24,11 @@ shown above.
 
 ## Tutorials
 
-- [Basic usage](docs/basic_usage.md)
-- [Getting started](docs/tutorial_getting_started.md)
-- [Equivalences and unsafe rewrites](docs/tutorial_explanations.md)
+Start with the [tutorial guide](docs/README.md), or follow the lessons in order:
+
+1. [Getting started](docs/tutorial_getting_started.md): expressions, e-classes,
+   pattern matching, and your first simplification.
+2. [Practical usage](docs/basic_usage.md): constant folding, conditional rules,
+   run limits, extraction costs, and troubleshooting.
+3. [Equivalences and unsafe rewrites](docs/tutorial_explanations.md): diagnose
+   incorrect equalities and understand rule preconditions.
