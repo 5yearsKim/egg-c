@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 project(eggc VERSION 0.1.0 LANGUAGES CXX)
 
 include(CTest)
-option(EGGC_BUILD_EXAMPLES "Build example executables" ON)
+option(EGGC_BUILD_EXAMPLES "Build example executables" OFF)
 option(EGGC_BUILD_BENCHMARKS "Build standalone e-graph benchmarks" OFF)
 option(EGGC_ENABLE_EGG_DIFFERENTIAL "Enable optional differential checks against Rust egg" OFF)
 option(EGGC_ENABLE_LINT "Add clang-format and clang-tidy targets when available" ON)

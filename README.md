@@ -17,8 +17,8 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-Examples are built by default. Configure with `-DEGGC_BUILD_EXAMPLES=OFF` to
-skip them. Example executables are placed in `build/examples/`. Test
+Examples are disabled by default. Configure with `-DEGGC_BUILD_EXAMPLES=ON` to
+build them. Example executables are placed in `build/examples/`. Test
 executables are placed in `build/Testing/` and can be run through CTest as
 shown above.
 

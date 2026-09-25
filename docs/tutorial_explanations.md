@@ -2,7 +2,7 @@
 
 This adapts Rust `egg`'s [explanations tutorial](https://egraphs-good.github.io/egg/egg/tutorials/_03_explanations/). The complete runnable program is [`examples/tutorial_explanations.cpp`](../examples/tutorial_explanations.cpp).
 
-From the repository root, build and run it with CMake and a C++17 compiler:
+Examples are disabled by default. From the repository root, enable them, then build and run this tutorial with CMake and a C++17 compiler:
 
 ```sh
 cmake -S . -B build -DEGGC_BUILD_EXAMPLES=ON
