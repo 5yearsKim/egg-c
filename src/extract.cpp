@@ -46,11 +46,11 @@ Extractor::Extractor(const EGraph& graph, CostPolicy cost)
                 bool finite = true;
                 for (const Id child_id : node.children) {
                     const auto child = graph.find(child_id);
-                    if (child >= choices_.size() || !choices_[child].cost) {
+                    if (child >= choices_.size() || !choices_[child]) {
                         finite = false;
                         break;
                     }
-                    child_costs.push_back(*choices_[child].cost);
+                    child_costs.push_back(choices_[child]->cost);
                 }
                 if (!finite) continue;
 
@@ -60,9 +60,8 @@ Extractor::Extractor(const EGraph& graph, CostPolicy cost)
                     if (*candidate <= child_cost)
                         throw std::invalid_argument("cost policy must return a cost greater than every child");
 
-                if (!choices_[id].cost || *candidate < *choices_[id].cost) {
-                    choices_[id].cost = *candidate;
-                    choices_[id].node = node;
+                if (!choices_[id] || *candidate < choices_[id]->cost) {
+                    choices_[id] = Choice{*candidate, node};
                     changed = true;
                 }
             }
@@ -78,30 +77,30 @@ void Extractor::check_graph() const {
 const Extractor::Choice& Extractor::choice(Id root) const {
     check_graph();
     root = graph_->find(root);
-    if (root >= choices_.size() || !choices_[root].cost || !choices_[root].node)
+    if (root >= choices_.size() || !choices_[root])
         throw std::runtime_error("no finite expression represented by e-class");
-    return choices_[root];
+    return *choices_[root];
 }
 
-std::size_t Extractor::best_cost(Id root) const { return *choice(root).cost; }
+std::size_t Extractor::best_cost(Id root) const { return choice(root).cost; }
 
 Expr Extractor::reconstruct(Id root) const {
     const auto& best = choice(root);
-    Expr result{best.node->op, {}};
-    result.children.reserve(best.node->children.size());
-    for (const Id child : best.node->children) result.children.push_back(reconstruct(child));
+    Expr result{best.node.op, {}};
+    result.children.reserve(best.node.children.size());
+    for (const Id child : best.node.children) result.children.push_back(reconstruct(child));
     return result;
 }
 
 ExtractionResult Extractor::find_best(Id root) const {
     const auto& best = choice(root);
-    const auto best_cost_value = *best.cost;
+    const auto best_cost_value = best.cost;
     return {best_cost_value, reconstruct(root)};
 }
 
 std::pair<std::size_t, RecExpr> Extractor::find_best_rec_expr(Id root) const {
     const auto root_choice = choice(root);
-    const auto best_cost_value = *root_choice.cost;
+    const auto best_cost_value = root_choice.cost;
     root = graph_->find(root);
 
     struct Visit { Id id; bool expanded; };
@@ -116,13 +115,13 @@ std::pair<std::size_t, RecExpr> Extractor::find_best_rec_expr(Id root) const {
         const auto& selected = choice(id);
         if (!visit.expanded) {
             stack.push_back({id, true});
-            for (auto it = selected.node->children.rbegin(); it != selected.node->children.rend(); ++it)
+            for (auto it = selected.node.children.rbegin(); it != selected.node.children.rend(); ++it)
                 if (!output_ids.count(graph_->find(*it))) stack.push_back({*it, false});
             continue;
         }
-        ExprNode node{selected.node->op, {}};
-        node.children.reserve(selected.node->children.size());
-        for (const Id child : selected.node->children) {
+        ExprNode node{selected.node.op, {}};
+        node.children.reserve(selected.node.children.size());
+        for (const Id child : selected.node.children) {
             const auto child_id = graph_->find(child);
             const auto found = output_ids.find(child_id);
             if (found == output_ids.end())

@@ -28,12 +28,12 @@ public:
 
 private:
     struct Choice {
-        std::optional<std::size_t> cost;
-        std::optional<ENode> node;
+        std::size_t cost;
+        ENode node;
     };
     const EGraph* graph_;
     std::uint64_t revision_;
-    std::vector<Choice> choices_;
+    std::vector<std::optional<Choice>> choices_;
     void check_graph() const;
     const Choice& choice(Id root) const;
     Expr reconstruct(Id root) const;

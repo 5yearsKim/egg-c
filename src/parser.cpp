@@ -23,14 +23,8 @@ Pattern parse_pattern(std::string_view text) {
     return pattern_from_expr(expr, expr.root());
 }
 
-Rewrite parse_rewrite(std::string name, std::string_view lhs, std::string_view rhs) {
-    Rewrite result{std::move(name), parse_pattern(lhs), parse_pattern(rhs)};
-    validate_rewrite(result);
-    return result;
-}
-
 Rewrite parse_rewrite(std::string name, std::string_view lhs, std::string_view rhs,
-                      Condition condition) {
+                      std::optional<Condition> condition) {
     Rewrite result{std::move(name), parse_pattern(lhs), parse_pattern(rhs), std::move(condition)};
     validate_rewrite(result);
     return result;

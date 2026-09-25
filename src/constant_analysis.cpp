@@ -2,6 +2,7 @@
 #include "eggc/egraph.hpp"
 #include <charconv>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 #include <string>
 
@@ -10,30 +11,31 @@ namespace {
 ConstantFact unknown() { return {}; }
 ConstantFact known(std::int64_t value) { return {ConstantFact::Kind::Known, value}; }
 
-bool parse_integer(const std::string& text, std::int64_t& value) {
-    if (text.empty()) return false;
+std::optional<std::int64_t> parse_integer(const std::string& text) {
+    if (text.empty()) return std::nullopt;
+    std::int64_t value;
     const auto parsed = std::from_chars(text.data(), text.data() + text.size(), value);
-    return parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size();
+    if (parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size())
+        return std::nullopt;
+    return value;
 }
 
-bool checked_add(std::int64_t a, std::int64_t b, std::int64_t& result) {
+std::optional<std::int64_t> checked_add(std::int64_t a, std::int64_t b) {
     if ((b > 0 && a > std::numeric_limits<std::int64_t>::max() - b) ||
-        (b < 0 && a < std::numeric_limits<std::int64_t>::min() - b)) return false;
-    result = a + b;
-    return true;
+        (b < 0 && a < std::numeric_limits<std::int64_t>::min() - b)) return std::nullopt;
+    return a + b;
 }
 
-bool checked_multiply(std::int64_t a, std::int64_t b, std::int64_t& result) {
+std::optional<std::int64_t> checked_multiply(std::int64_t a, std::int64_t b) {
     using Limits = std::numeric_limits<std::int64_t>;
-    if (a == 0 || b == 0) { result = 0; return true; }
-    if ((a == -1 && b == Limits::min()) || (b == -1 && a == Limits::min())) return false;
+    if (a == 0 || b == 0) return 0;
+    if ((a == -1 && b == Limits::min()) || (b == -1 && a == Limits::min())) return std::nullopt;
     if (a > 0) {
-        if ((b > 0 && a > Limits::max() / b) || (b < 0 && b < Limits::min() / a)) return false;
+        if ((b > 0 && a > Limits::max() / b) || (b < 0 && b < Limits::min() / a)) return std::nullopt;
     } else {
-        if ((b > 0 && a < Limits::min() / b) || (b < 0 && a < Limits::max() / b)) return false;
+        if ((b > 0 && a < Limits::min() / b) || (b < 0 && a < Limits::max() / b)) return std::nullopt;
     }
-    result = a * b;
-    return true;
+    return a * b;
 }
 
 const ConstantFact& fact(const EGraph& graph, Id id) {
@@ -43,8 +45,7 @@ const ConstantFact& fact(const EGraph& graph, Id id) {
 
 std::any ConstantAnalysis::make(const EGraph& graph, const ENode& node) const {
     if (node.children.empty()) {
-        std::int64_t value;
-        if (parse_integer(node.op, value)) return known(value);
+        if (const auto value = parse_integer(node.op)) return known(*value);
         return unknown();
     }
     if ((node.op != "+" && node.op != "*") || node.children.size() != 2) return unknown();
@@ -52,11 +53,10 @@ std::any ConstantAnalysis::make(const EGraph& graph, const ENode& node) const {
     const auto& right = fact(graph, node.children[1]);
     if (left.kind != ConstantFact::Kind::Known || right.kind != ConstantFact::Kind::Known)
         return unknown();
-    std::int64_t result;
-    const bool fits = node.op == "+"
-        ? checked_add(left.value, right.value, result)
-        : checked_multiply(left.value, right.value, result);
-    return fits ? std::any(known(result)) : std::any(unknown());
+    const auto result = node.op == "+"
+        ? checked_add(left.value, right.value)
+        : checked_multiply(left.value, right.value);
+    return result ? std::any(known(*result)) : std::any(unknown());
 }
 
 AnalysisMerge ConstantAnalysis::merge(std::any& into, const std::any& from) const {
