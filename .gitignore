@@ -1,5 +1,6 @@
 # CMake build directories and generated files
 /build/
+/build-*/
 /cmake-build-*/
 CMakeFiles/
 CMakeCache.txt
@@ -7,6 +8,9 @@ cmake_install.cmake
 CTestTestfile.cmake
 compile_commands.json
 Makefile
+
+# Optional Rust egg differential checker
+/tests/differential/rust_egg/target/
 
 # Compiled artifacts
 *.o

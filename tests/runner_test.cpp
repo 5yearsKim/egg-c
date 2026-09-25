@@ -31,6 +31,26 @@ bool dirty_input_is_rebuilt_before_search() {
            check(report.nodes == graph.node_count(), "report reflects rebuilt node count");
 }
 
+bool operator_index_tracks_root_operators_and_arity() {
+    EGraph graph;
+    graph.add("a");
+    const auto f1 = graph.add("f", {graph.add("x")});
+    const auto f2 = graph.add("f", {graph.add("y")});
+    graph.add("f", {graph.add("x"), graph.add("y")});
+    graph.rebuild();
+    bool dirty_rejected = false;
+    graph.add("z");
+    try { (void)graph.classes_for_op("f", 1); }
+    catch (const std::logic_error&) { dirty_rejected = true; }
+    graph.rebuild();
+    const auto& unary = graph.classes_for_op("f", 1);
+    return check(dirty_rejected, "operator index rejects dirty reads") &&
+           check(unary.size() == 2, "operator index keeps e-classes, not node count") &&
+           check(graph.find(unary[0]) == graph.find(f1) && graph.find(unary[1]) == graph.find(f2),
+                 "operator index returns unary f classes") &&
+           check(graph.classes_for_op("missing", 0).empty(), "missing operator returns no candidates");
+}
+
 bool new_matches_wait_until_the_next_iteration() {
     EGraph graph;
     const auto a = graph.add("a");
@@ -143,6 +163,30 @@ bool exact_match_limit_allows_search_to_complete() {
                  "all matches at the limit are applied");
 }
 
+bool per_rule_backoff_eventually_searches_every_match() {
+    EGraph graph;
+    const auto a = graph.add("a");
+    const auto b = graph.add("b");
+    const auto c = graph.add("c");
+    const auto fa = graph.add("f", {a});
+    const auto fb = graph.add("f", {b});
+    const auto fc = graph.add("f", {c});
+    graph.merge(fa, fb);
+    graph.merge(fa, fc);
+    graph.rebuild();
+
+    RunOptions options;
+    options.iteration_limit = 8;
+    options.per_rule_match_limit = 1;
+    const auto report = run(graph, {{"unwrap", n("f", {v("x")}), v("x")}}, options);
+    std::size_t deferred = 0;
+    for (const auto& iteration : report.history) deferred += iteration.backed_off_rules;
+    return check(report.reason == StopReason::Saturated, "backoff eventually reaches saturation") &&
+           check(graph.find(a) == graph.find(b) && graph.find(b) == graph.find(c),
+                 "matches beyond the first budget are eventually applied") &&
+           check(deferred > 0, "runner reports the deferred rule iterations");
+}
+
 bool zero_time_limit_stops_before_search() {
     EGraph graph;
     graph.add("a");
@@ -169,6 +213,7 @@ bool zero_iteration_limit_rebuilds_input() {
 
 int main() {
     const bool passed = dirty_input_is_rebuilt_before_search() &&
+        operator_index_tracks_root_operators_and_arity() &&
         new_matches_wait_until_the_next_iteration() &&
         invalid_rule_is_rejected_before_any_mutation() &&
         saturated_graph_does_not_repeat_for_redundant_rewrites() &&
@@ -176,6 +221,7 @@ int main() {
         node_limit_returns_a_rebuilt_graph() &&
         match_limit_does_not_apply_a_partial_search() &&
         exact_match_limit_allows_search_to_complete() &&
+        per_rule_backoff_eventually_searches_every_match() &&
         zero_time_limit_stops_before_search() &&
         zero_iteration_limit_rebuilds_input();
     return passed ? 0 : 1;
