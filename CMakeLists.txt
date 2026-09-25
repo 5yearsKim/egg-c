@@ -21,4 +21,8 @@ if(BUILD_TESTING)
     add_executable(pattern_test tests/pattern_test.cpp)
     target_link_libraries(pattern_test PRIVATE eggc)
     add_test(NAME pattern_test COMMAND pattern_test)
+
+    add_executable(runner_test tests/runner_test.cpp)
+    target_link_libraries(runner_test PRIVATE eggc)
+    add_test(NAME runner_test COMMAND runner_test)
 endif()

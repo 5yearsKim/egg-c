@@ -4,6 +4,7 @@
 #include <set>
 #include <stdexcept>
 #include <utility>
+#include <functional>
 
 namespace eggc {
 Pattern Pattern::var(std::string name) { return Pattern{"?" + name, {}}; }
@@ -24,51 +25,55 @@ MatchKey key_for(const EGraph& graph, const Substitution& subst) {
     return key;
 }
 
-std::vector<Substitution> match_all(const EGraph& graph, const Pattern& pattern,
-                                   Id eclass, const Substitution& incoming) {
+bool enumerate(const EGraph& graph, const Pattern& pattern, Id eclass,
+               const Substitution& incoming,
+               const std::function<bool(const Substitution&)>& emit,
+               const std::function<bool()>& should_stop) {
+    if (should_stop && should_stop()) return false;
     eclass = graph.find(eclass);
     if (pattern.is_var()) {
         auto it = incoming.find(pattern.op);
-        if (it != incoming.end()) {
-            if (graph.find(it->second) == eclass) return {incoming};
-            return {};
-        }
+        if (it != incoming.end())
+            return graph.find(it->second) != eclass || emit(incoming);
         Substitution extended = incoming;
         extended.emplace(pattern.op, eclass);
-        return {std::move(extended)};
+        return emit(extended);
     }
 
-    std::vector<Substitution> results;
     for (const auto& node : graph.nodes(eclass)) {
+        if (should_stop && should_stop()) return false;
         if (node.op != pattern.op || node.children.size() != pattern.children.size()) continue;
 
-        std::vector<Substitution> partials{incoming};
-        for (std::size_t i = 0; i < pattern.children.size() && !partials.empty(); ++i) {
-            std::vector<Substitution> next;
-            for (const auto& partial : partials) {
-                auto child_matches = match_all(graph, pattern.children[i], node.children[i], partial);
-                next.insert(next.end(), std::make_move_iterator(child_matches.begin()),
-                            std::make_move_iterator(child_matches.end()));
-            }
-            partials = std::move(next);
-        }
-        results.insert(results.end(), std::make_move_iterator(partials.begin()),
-                       std::make_move_iterator(partials.end()));
+        std::function<bool(std::size_t, const Substitution&)> match_children;
+        match_children = [&](std::size_t child, const Substitution& subst) {
+            if (should_stop && should_stop()) return false;
+            if (child == pattern.children.size()) return emit(subst);
+            return enumerate(graph, pattern.children[child], node.children[child], subst,
+                             [&](const Substitution& next) {
+                                 return match_children(child + 1, next);
+                             }, should_stop);
+        };
+        if (!match_children(0, incoming)) return false;
     }
-    return results;
+    return true;
 }
 }
 std::vector<Substitution> match(const EGraph& graph, const Pattern& pattern, Id eclass) {
-    auto results = match_all(graph, pattern, eclass, {});
+    std::vector<Substitution> results;
+    search_matches(graph, pattern, eclass,
+                   [&](const Substitution& subst) { results.push_back(subst); return true; });
+    return results;
+}
+bool search_matches(const EGraph& graph, const Pattern& pattern, Id eclass,
+                    const std::function<bool(const Substitution&)>& on_match,
+                    const std::function<bool()>& should_stop) {
     std::set<MatchKey> seen;
-    std::vector<Substitution> unique;
-    unique.reserve(results.size());
-    for (auto& subst : results) {
-        for (auto& binding : subst) binding.second = graph.find(binding.second);
-        if (seen.insert(key_for(graph, subst)).second)
-            unique.push_back(std::move(subst));
-    }
-    return unique;
+    return enumerate(graph, pattern, eclass, {}, [&](const Substitution& found) {
+        Substitution canonical = found;
+        for (auto& binding : canonical) binding.second = graph.find(binding.second);
+        if (!seen.insert(key_for(graph, canonical)).second) return true;
+        return on_match(canonical);
+    }, should_stop);
 }
 Id instantiate(EGraph& graph, const Pattern& pattern, const Substitution& subst) {
     if (pattern.is_var()) {

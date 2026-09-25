@@ -1,5 +1,6 @@
 #pragma once
 #include "enode.hpp"
+#include <cstdint>
 #include <unordered_map>
 #include <vector>
 
@@ -16,11 +17,14 @@ public:
     std::vector<Id> classes() const;
     std::size_t class_count() const;
     std::size_t node_count() const;
+    std::uint64_t revision() const noexcept { return revision_; }
 
 private:
     std::vector<Id> parent_;
     std::vector<unsigned> rank_;
     std::vector<std::vector<ENode>> classes_;
     std::unordered_map<ENode, Id, ENodeHash> memo_;
+    std::size_t stored_node_count_ = 0;
+    std::uint64_t revision_ = 0;
 };
 }

@@ -21,6 +21,8 @@ Id EGraph::add(ENode node) {
     Id id = static_cast<Id>(parent_.size());
     parent_.push_back(id); rank_.push_back(0); classes_.push_back({node});
     memo_.emplace(std::move(node), id);
+    ++stored_node_count_;
+    ++revision_;
     return id;
 }
 Id EGraph::add(const std::string& op, std::vector<Id> children) {
@@ -32,6 +34,7 @@ bool EGraph::merge(Id a, Id b) {
     if (rank_[a] < rank_[b]) std::swap(a, b);
     parent_[b] = a;
     if (rank_[a] == rank_[b]) ++rank_[a];
+    ++revision_;
     return true;
 }
 void EGraph::rebuild() {
@@ -61,6 +64,9 @@ void EGraph::rebuild() {
         }
     }
     classes_.swap(compact);
+    stored_node_count_ = 0;
+    for (Id id = 0; id < classes_.size(); ++id)
+        if (find(id) == id) stored_node_count_ += classes_[id].size();
     memo_.clear();
     for (Id id = 0; id < classes_.size(); ++id)
         if (find(id) == id) for (const auto& node : classes_[id]) memo_.emplace(node, id);
@@ -73,8 +79,6 @@ std::vector<Id> EGraph::classes() const {
 }
 std::size_t EGraph::class_count() const { return classes().size(); }
 std::size_t EGraph::node_count() const {
-    std::size_t n = 0;
-    for (Id id : classes()) n += classes_[id].size();
-    return n;
+    return stored_node_count_;
 }
 }
