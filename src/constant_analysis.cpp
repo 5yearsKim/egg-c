@@ -2,6 +2,7 @@
 #include "eggc/egraph.hpp"
 #include <charconv>
 #include <limits>
+#include <stdexcept>
 #include <string>
 
 namespace eggc {
@@ -76,5 +77,29 @@ void ConstantAnalysis::modify(EGraph& graph, Id id) const {
     if (value.kind != ConstantFact::Kind::Known) return;
     const auto literal = graph.add(std::to_string(value.value));
     graph.merge(id, literal);
+}
+
+Condition known_nonzero(std::string variable) {
+    if (variable.size() < 2 || variable.front() != '?')
+        throw std::invalid_argument("nonzero condition requires a pattern variable");
+    Condition result;
+    result.name = "known-nonzero";
+    result.required_variables = {variable};
+    result.check = [variable = std::move(variable)](
+        const EGraph& graph, Id, const Substitution& subst) {
+        graph.require_clean();
+        if (!graph.has_analysis())
+            throw std::logic_error("known-nonzero condition requires ConstantAnalysis");
+        const auto found = subst.find(variable);
+        if (found == subst.end())
+            throw std::logic_error("known-nonzero condition has no bound variable");
+        const auto* value = std::any_cast<ConstantFact>(&graph.analysis_data(found->second));
+        if (!value)
+            throw std::logic_error("known-nonzero condition requires ConstantAnalysis facts");
+        if (value->kind == ConstantFact::Kind::Conflict)
+            throw AnalysisConflict("nonzero condition encountered conflicting constants");
+        return value->kind == ConstantFact::Kind::Known && value->value != 0;
+    };
+    return result;
 }
 }

@@ -1,5 +1,6 @@
 #pragma once
 #include "analysis.hpp"
+#include "rewrite.hpp"
 #include <cstdint>
 
 namespace eggc {
@@ -16,4 +17,8 @@ public:
     AnalysisMerge merge(std::any& into, const std::any& from) const override;
     void modify(EGraph& graph, Id id) const override;
 };
+
+// Requires a ConstantAnalysis-backed graph. Unknown facts reject the match;
+// a missing/incompatible analysis is a configuration error.
+Condition known_nonzero(std::string variable);
 }

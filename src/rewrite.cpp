@@ -27,5 +27,13 @@ void validate_rewrite(const Rewrite& rule) {
         if (!lhs_variables.count(variable))
             throw std::invalid_argument("rewrite '" + rule.name +
                                         "' has unbound rhs variable " + variable);
+    if (rule.condition) {
+        if (!rule.condition->check)
+            throw std::invalid_argument("rewrite '" + rule.name + "' has an empty condition");
+        for (const auto& variable : rule.condition->required_variables)
+            if (!lhs_variables.count(variable))
+                throw std::invalid_argument("rewrite '" + rule.name +
+                                            "' has unbound condition variable " + variable);
+    }
 }
 }

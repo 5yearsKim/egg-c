@@ -21,6 +21,9 @@ struct PendingMatch {
 
 struct SearchResult {
     std::vector<PendingMatch> pending;
+    std::size_t matches = 0;
+    std::size_t condition_checks = 0;
+    std::size_t condition_rejections = 0;
     std::size_t backed_off_rules = 0;
     bool any_backoff = false;
     std::optional<StopReason> stop;
@@ -46,12 +49,25 @@ SearchResult search_iteration(const EGraph& graph, const std::vector<Rewrite>& r
                         rule_backed_off = true;
                         return false;
                     }
-                    if (options.match_limit && result.pending.size() >= *options.match_limit) {
+                    if (options.match_limit && result.matches >= *options.match_limit) {
                         result.stop = StopReason::MatchLimit;
                         return false;
                     }
-                    result.pending.push_back({rule_index, id, subst});
                     ++rule_matches;
+                    ++result.matches;
+                    if (rules[rule_index].condition) {
+                        ++result.condition_checks;
+                        const bool allowed = rules[rule_index].condition->check(graph, id, subst);
+                        if (timed_out()) {
+                            result.stop = StopReason::TimeLimit;
+                            return false;
+                        }
+                        if (!allowed) {
+                            ++result.condition_rejections;
+                            return true;
+                        }
+                    }
+                    result.pending.push_back({rule_index, id, subst});
                     return true;
                 }, timed_out);
             if (!completed) {
@@ -120,7 +136,9 @@ RunReport run(EGraph& graph, const std::vector<Rewrite>& rules, const RunOptions
         const auto search_start = Clock::now();
         const auto search = search_iteration(graph, rules, options, rule_budgets, timed_out);
         stats.search_time = Clock::now() - search_start;
-        stats.matches = search.pending.size();
+        stats.matches = search.matches;
+        stats.condition_checks = search.condition_checks;
+        stats.condition_rejections = search.condition_rejections;
         stats.backed_off_rules = search.backed_off_rules;
         if (search.stop) {
             report.reason = *search.stop;

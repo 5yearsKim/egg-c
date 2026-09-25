@@ -1,0 +1,16 @@
+version	1
+add	a	a
+add	b	b
+add	fa	(f a)
+add	fb	(f b)
+add	pair	(pair (f a) (f b))
+merge	fa	fb
+rebuild
+eq	fa	fb
+cost	pair	size
+cost	pair	depth
+match	fa	(f ?x)
+rule	unwrap	(f ?x)	?x	-
+run	16
+eq	a	b
+cost	pair	size

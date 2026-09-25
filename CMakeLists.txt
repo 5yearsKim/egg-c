@@ -48,6 +48,10 @@ if(BUILD_TESTING)
     target_link_libraries(analysis_test PRIVATE eggc)
     add_test(NAME analysis_test COMMAND analysis_test)
 
+    add_executable(condition_test tests/condition_test.cpp)
+    target_link_libraries(condition_test PRIVATE eggc)
+    add_test(NAME condition_test COMMAND condition_test)
+
     add_executable(egraph_test tests/egraph_test.cpp)
     target_link_libraries(egraph_test PRIVATE eggc_test_support)
     add_test(NAME egraph_test COMMAND egraph_test)
@@ -60,15 +64,18 @@ endif()
 
 if(EGGC_ENABLE_EGG_DIFFERENTIAL AND BUILD_TESTING)
     find_program(CARGO_EXECUTABLE cargo)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
     if(NOT CARGO_EXECUTABLE)
         message(FATAL_ERROR "EGGC_ENABLE_EGG_DIFFERENTIAL requires cargo")
     endif()
     add_executable(eggc_differential tests/differential/cpp_reference.cpp)
     target_link_libraries(eggc_differential PRIVATE eggc)
     add_test(NAME egg_differential
-        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/differential/compare.sh
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/differential/check.py
                 $<TARGET_FILE:eggc_differential> ${CARGO_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/differential/rust_egg)
+    add_test(NAME egg_differential_harness
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/differential/test_harness.py)
 endif()
 
 if(EGGC_ENABLE_LINT)

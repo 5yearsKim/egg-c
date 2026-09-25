@@ -11,6 +11,7 @@ Makefile
 
 # Optional Rust egg differential checker
 /tests/differential/rust_egg/target/
+__pycache__/
 
 # Compiled artifacts
 *.o

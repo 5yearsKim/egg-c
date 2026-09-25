@@ -1,0 +1,9 @@
+version	1
+add	big	(+ 9223372036854775807 1)
+add	one	1
+add	root	(/ (+ 9223372036854775807 1) (+ 9223372036854775807 1))
+rebuild
+fact	big
+rule	div-self	(/ ?x ?x)	1	nonzero:?x
+run	16
+eq	root	one

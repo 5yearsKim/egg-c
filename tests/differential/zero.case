@@ -1,0 +1,9 @@
+version	1
+add	zero	0
+add	one	1
+add	root	(/ 0 0)
+rebuild
+fact	zero
+rule	div-self	(/ ?x ?x)	1	nonzero:?x
+run	16
+eq	root	one

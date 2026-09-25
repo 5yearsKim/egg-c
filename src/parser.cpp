@@ -28,4 +28,11 @@ Rewrite parse_rewrite(std::string name, std::string_view lhs, std::string_view r
     validate_rewrite(result);
     return result;
 }
+
+Rewrite parse_rewrite(std::string name, std::string_view lhs, std::string_view rhs,
+                      Condition condition) {
+    Rewrite result{std::move(name), parse_pattern(lhs), parse_pattern(rhs), std::move(condition)};
+    validate_rewrite(result);
+    return result;
+}
 }
