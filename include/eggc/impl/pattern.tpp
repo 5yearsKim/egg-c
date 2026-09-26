@@ -3,6 +3,8 @@
 #include <set>
 #include <stdexcept>
 
+#include "matcher.hpp"
+
 namespace eggc {
 template <Language L>
 Pattern<L> Pattern<L>::var(std::string name) {
@@ -46,6 +48,16 @@ void Pattern<L>::validate() const {
         if (child >= i)
           throw std::invalid_argument("pattern children must precede parent");
     }
+  }
+  // Earlier-child ordering lets a reverse pass visit the entire root DAG.
+  // Disconnected variables cannot be bound by the root's matcher.
+  std::vector<unsigned char> reachable(nodes.size(), 0);
+  reachable.back() = 1;
+  for (std::size_t i = nodes.size(); i-- > 0;) {
+    if (!reachable[i])
+      throw std::invalid_argument("pattern contains an unreachable entry");
+    if (const auto* node = std::get_if<L>(&nodes[i]))
+      for (Id child : node->children()) reachable[child] = 1;
   }
 }
 template <Language L>
@@ -97,18 +109,10 @@ template <Language L, class A, class Callback>
   requires AnalysisFor<A, L>
 bool search_matches(const EGraph<L, A>& graph, const Pattern<L>& pattern,
                     Id eclass, Callback&& on_match, const StopCheck& stop) {
-  graph.require_clean();
-  pattern.validate();
-  using Key = std::vector<std::pair<std::string, Id>>;
-  std::set<Key> seen;
-  return pattern_detail::enumerate(
-      graph, pattern, static_cast<Id>(pattern.nodes.size() - 1), eclass, {},
-      [&](const Substitution& subst) {
-        Key key(subst.begin(), subst.end());
-        std::sort(key.begin(), key.end());
-        return !seen.insert(std::move(key)).second || on_match(subst);
-      },
-      stop);
+  const CompiledPattern<L> compiled(pattern);
+  return compiled.search(graph, eclass, [&](const std::vector<Id>& bindings) {
+    return on_match(compiled.substitution(bindings));
+  }, stop);
 }
 template <Language L, class A>
   requires AnalysisFor<A, L>

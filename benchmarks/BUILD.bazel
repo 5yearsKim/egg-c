@@ -1,0 +1,15 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+
+cc_binary(
+    name = "engine_benchmark",
+    srcs = ["engine_benchmark.cpp"],
+    deps = ["//%s:eggc" % "/".join(package_name().split("/")[:-1])],
+)
+
+cc_test(
+    name = "engine_benchmark_smoke",
+    srcs = ["engine_benchmark.cpp"],
+    args = ["all", "8", "1"],
+    deps = ["//%s:eggc" % "/".join(package_name().split("/")[:-1])],
+)

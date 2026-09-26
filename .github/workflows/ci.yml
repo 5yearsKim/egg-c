@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cmake:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - compiler: g++
+            build_type: Debug
+            flags: -Wall -Wextra -Wpedantic
+            label: GCC Debug
+          - compiler: clang++
+            build_type: Release
+            flags: -Wall -Wextra -Wpedantic
+            label: Clang Release
+          - compiler: clang++
+            build_type: Debug
+            flags: -Wall -Wextra -Wpedantic -fsanitize=address,undefined -fno-omit-frame-pointer
+            label: Clang ASan UBSan
+    name: ${{ matrix.label }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: >-
+          cmake -S . -B build
+          -DCMAKE_CXX_COMPILER=${{ matrix.compiler }}
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DCMAKE_CXX_FLAGS="${{ matrix.flags }}"
+          -DEGGC_BUILD_BENCHMARKS=ON
+      - name: Build
+        run: cmake --build build --parallel 2
+      - name: Test
+        env:
+          ASAN_OPTIONS: detect_leaks=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: ctest --test-dir build --output-on-failure
+
+  bazel:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: bazel-contrib/setup-bazel@0.19.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+      - name: Test
+        run: bazel test --config=release --jobs=2 //tests:all //examples:all //benchmarks:all

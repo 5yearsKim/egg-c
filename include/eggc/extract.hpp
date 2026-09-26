@@ -7,24 +7,23 @@
 namespace eggc {
 // Costs must be deterministic, nondecreasing, and greater than each child's.
 // nullopt excludes a node, including when cost arithmetic overflows.
-template <Language L>
-using CostPolicy = std::function<std::optional<std::size_t>(
-    const L &, const std::vector<std::size_t> &)>;
+template <Language L, class Cost = std::size_t>
+using CostPolicy =
+    std::function<std::optional<Cost>(const L &, const std::vector<Cost> &)>;
 template <Language L> CostPolicy<L> ast_size_cost();
 template <Language L> CostPolicy<L> ast_depth_cost();
 
-template <Language L, class A = NoAnalysis<L>>
+template <Language L, class A = NoAnalysis<L>, class Cost = std::size_t>
   requires AnalysisFor<A, L>
 class Extractor {
 public:
-  explicit Extractor(const EGraph<L, A> &graph,
-                     CostPolicy<L> cost = ast_size_cost<L>());
-  std::size_t best_cost(Id root) const;
-  std::pair<std::size_t, RecExpr<L>> find_best(Id root) const;
+  explicit Extractor(const EGraph<L, A> &graph, CostPolicy<L, Cost> cost = {});
+  Cost best_cost(Id root) const;
+  std::pair<Cost, RecExpr<L>> find_best(Id root) const;
 
 private:
   struct Choice {
-    std::size_t cost;
+    Cost cost;
     L node;
   };
   const EGraph<L, A> *graph_;

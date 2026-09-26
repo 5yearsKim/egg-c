@@ -9,6 +9,7 @@ namespace eggc {
 // A ready-to-use language. Operators and literals are symbols; rewrites or
 // application analysis supply their meaning.
 struct SymbolLang {
+  static constexpr bool exact_matches = true;
   std::string op;
   std::vector<Id> args;
 

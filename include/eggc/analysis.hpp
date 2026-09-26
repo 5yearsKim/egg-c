@@ -26,7 +26,12 @@ concept AnalysisFor =
     };
 // Analysis supplies Data, make(graph, node), and merge(into, from). merge must
 // be associative, commutative, and idempotent. Conflicts reject a union before
-// graph mutation. Facts describe all representatives of an e-class.
+// graph mutation. Facts describe all representatives of an e-class. make()
+// must be deterministic from the node and its child facts, and monotone as
+// those facts grow. The domain must converge (for example, have finite height).
+// Rebuilding a clean graph performs no analysis work; external state changes
+// are not a way to invalidate facts. Conflict rejection is local to a union,
+// not a transaction that rolls back an entire rewrite or rebuild.
 template <Language L> struct NoAnalysis {
   using Data = std::monostate;
   Data make(const EGraph<L, NoAnalysis> &, const L &) const { return {}; }
