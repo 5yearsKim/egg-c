@@ -1,0 +1,4 @@
+build --cxxopt=-std=c++17
+build:debug --compilation_mode=dbg
+build:release --compilation_mode=opt
+test --test_output=errors

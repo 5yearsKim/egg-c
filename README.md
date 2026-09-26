@@ -22,6 +22,48 @@ build them. Example executables are placed in `build/examples/`. Test
 executables are placed in `build/Testing/` and can be run through CTest as
 shown above.
 
+## Bazel
+
+Install [Bazelisk](https://github.com/bazelbuild/bazelisk) to use the Bazel version
+pinned in `.bazelversion`. A C++17 compiler is required. Bazel downloads its
+C++ build rules on first use. Python and Rust are not required for Bazel builds.
+
+```sh
+bazel build //:eggc
+bazel test //tests:all --config=debug
+bazel test //tests:all --config=release
+bazel run //examples:tutorial_getting_started
+bazel run -c opt //benchmarks:eggc_bench -- 1000
+```
+
+Library sources and headers are discovered with `glob`. Each `tests/*_test.cpp`
+and `examples/*.cpp` automatically creates a target named after the file stem.
+Globs stay within their Bazel package; adding a nested `BUILD.bazel` creates a
+separate package whose files need their own targets.
+
+All three examples have targets under `//examples`. The public library target
+is `//:eggc`; consumers include headers as `eggc/all.hpp` or individual
+`eggc/*.hpp` headers. C++ compilation uses the system compiler.
+
+Optional differential checks against Rust egg remain available through CMake.
+They require Python and Cargo:
+
+```sh
+cmake -S . -B build-differential -DEGGC_ENABLE_EGG_DIFFERENTIAL=ON
+cmake --build build-differential
+ctest --test-dir build-differential --output-on-failure
+```
+
+CMake remains available for formatting, clang-tidy, and a compilation database:
+
+```sh
+cmake -S . -B build -DEGGC_BUILD_EXAMPLES=ON -DEGGC_BUILD_BENCHMARKS=ON
+cmake --build build --target format
+cmake --build build --target tidy
+```
+
+CMake generates `build/compile_commands.json` for editors and clang-tidy.
+
 ## Tutorials
 
 Start with the [tutorial guide](docs/README.md), or follow the lessons in order:
