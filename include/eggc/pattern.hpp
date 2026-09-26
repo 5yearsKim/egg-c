@@ -15,7 +15,8 @@ using StopCheck = std::function<bool()>;
 
 template <Language L> struct Pattern {
   using Entry = std::variant<Var, L>;
-  // Node children index earlier pattern entries, just as in RecExpr.
+  // Node children index earlier pattern entries, just as in RecExpr. Every
+  // entry must be reachable from the final root; DAG sharing is permitted.
   std::vector<Entry> nodes;
   static Pattern var(std::string name);
   // prototype has the intended arity; placeholder children are replaced.
@@ -38,4 +39,5 @@ template <Language L, class A>
 Id instantiate(EGraph<L, A> &graph, const Pattern<L> &pattern,
                const Substitution &substitution);
 } // namespace eggc
+
 #include "impl/pattern.tpp"

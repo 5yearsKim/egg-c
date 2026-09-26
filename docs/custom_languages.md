@@ -69,6 +69,18 @@ must be associative, commutative, and idempotent. Return `AnalysisMerge::Conflic
 to reject incompatible facts. See [conditional rewrites](conditional_rewrites.md)
 for a complete analysis example.
 
+`Data` may be any copyable type, including `bool`. `make()` must depend on the
+node and its operand facts, be deterministic, and be monotone as facts grow.
+Use a convergent domain, such as a finite set of facts. Rebuild propagates
+changes through a dependency queue; rebuilding an already-clean graph does
+not reevaluate facts. Mutating external state is not an invalidation mechanism.
+Rejecting a conflicting union does not roll back previous changes made by an
+entire rewrite or rebuild.
+
+Manually constructed patterns must have every entry reachable from their final
+root. Multiple child positions may reference the same earlier entry; disconnected
+variables or nodes are rejected before execution.
+
 ```sh
 bazel run //examples:custom_language
 ```

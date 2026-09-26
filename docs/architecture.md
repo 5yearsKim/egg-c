@@ -24,7 +24,9 @@ Follow this order to understand how expressions become optimized results:
 3. `analysis.hpp`: facts shared by every member of a class.
 4. `pattern.hpp`, `rewrite.hpp`: matches, replacements, and conditions.
 5. `runner.hpp`: repeated search/application and stopping limits.
-6. `extract.hpp`: choose an expression from the root's class.
+6. `extract.hpp`, `dag_extract.hpp`: tree and DAG extraction.
+7. `matcher.hpp`, `multipattern.hpp`: compiled matching and joined clauses.
+8. `dot.hpp`: graph visualization.
 
 For an algorithm's implementation, open the corresponding `.tpp` in `impl/`.
 The [custom-language regression tests](../tests/language_test.cpp) exercise the
@@ -51,7 +53,19 @@ engine independently of the text API.
 Each directory owns its CMake and Bazel targets. Root build files expose the
 header-only library and connect those targets.
 
+`benchmarks/` contains six deterministic workloads. Enable it with
+`EGGC_BUILD_BENCHMARKS=ON` in CMake or build its Bazel targets directly. CI checks
+GCC, Clang, address/undefined-behavior sanitizers, and the Bazel build. See
+[performance and diagnostics](performance.md) for commands and counters.
+
 Keep an application-specific operator or analysis in the application. Put a
 generic engine change in its public header and matching template implementation;
 put syntax changes in the text files above. Add a focused regression test under
 `tests/` and a runnable example when introducing a new user-facing workflow.
+
+The graph's persistent node arena, parent-use lists, and work queues are in
+`egraph.hpp`/`impl/egraph.tpp`. Clean class views retain the original public node
+API. `impl/matcher.hpp` implements the numeric matching machine used by public
+patterns and the runner. Extraction policies propagate costs through the graph's
+parent dependencies. See [advanced features](advanced_features.md) for contracts
+and limitations.

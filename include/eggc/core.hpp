@@ -9,3 +9,7 @@
 #include "pattern.hpp"
 #include "rewrite.hpp"
 #include "runner.hpp"
+
+#include "dag_extract.hpp"
+#include "dot.hpp"
+#include "multipattern.hpp"

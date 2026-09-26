@@ -60,6 +60,8 @@ There is no compiled library to link.
 - [Custom languages](docs/custom_languages.md): typed nodes and parsing.
 - [Conditional rewrites](docs/conditional_rewrites.md): rules that require proven facts.
 - [Code structure](docs/architecture.md): header responsibilities and a reading order.
+- [Advanced features](docs/advanced_features.md): analysis hooks, matching, extraction, and installed packages.
+- [Performance and diagnostics](docs/performance.md): benchmarks and engine statistics.
 - [Runnable examples](examples/): all examples also run as tests.
 
 ## Layout

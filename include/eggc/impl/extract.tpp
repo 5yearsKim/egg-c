@@ -1,6 +1,8 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
+#include <deque>
 #include <limits>
 #include <stdexcept>
 #include <unordered_map>
@@ -32,12 +34,19 @@ CostPolicy<L> ast_depth_cost() {
   };
 }
 
-template <Language L, class A>
+template <Language L, class A, class Cost>
   requires AnalysisFor<A, L>
-Extractor<L, A>::Extractor(const EGraph<L, A>& graph, CostPolicy<L> cost)
+Extractor<L, A, Cost>::Extractor(const EGraph<L, A>& graph,
+                                 CostPolicy<L, Cost> cost)
     : graph_(&graph), revision_(graph.revision()) {
   graph.require_clean();
-  if (!cost) throw std::invalid_argument("extractor requires a cost policy");
+  if (!cost) {
+    if constexpr (std::same_as<Cost, std::size_t>)
+      cost = ast_size_cost<L>();
+    else
+      throw std::invalid_argument(
+          "extractor requires a cost policy for this cost type");
+  }
 
   const auto ids = graph.classes();
   const std::size_t slots = graph.node_count() == 0
@@ -47,51 +56,63 @@ Extractor<L, A>::Extractor(const EGraph<L, A>& graph, CostPolicy<L> cost)
                                       1;
   choices_.resize(slots);
 
-  bool changed;
-  do {
-    changed = false;
-    for (const Id id : ids) {
-      for (const auto& node : graph.nodes(id)) {
-        std::vector<std::size_t> child_costs;
-        child_costs.reserve(node.children().size());
-        bool finite = true;
-        for (const Id child_id : node.children()) {
-          const auto child = graph.find(child_id);
-          if (child >= choices_.size() || !choices_[child]) {
-            finite = false;
-            break;
-          }
-          child_costs.push_back(choices_[child]->cost);
+  std::deque<Id> pending(ids.begin(), ids.end());
+  std::vector<unsigned char> queued(slots, 0);
+  for (Id id : ids) queued[id] = 1;
+  std::vector<Cost> child_costs;
+  while (!pending.empty()) {
+    const Id id = pending.front();
+    pending.pop_front();
+    queued[id] = 0;
+    bool improved = false;
+    for (const auto& node : graph.nodes(id)) {
+      child_costs.clear();
+      bool finite = true;
+      for (Id child_id : node.children()) {
+        const Id child = graph.find(child_id);
+        if (!choices_[child]) {
+          finite = false;
+          break;
         }
-        if (!finite) continue;
-
-        const auto candidate = cost(node, child_costs);
-        if (!candidate) continue;
-        for (const auto child_cost : child_costs)
-          if (*candidate <= child_cost)
-            throw std::invalid_argument(
-                "cost policy must return a cost greater than every child");
-
-        if (!choices_[id] || *candidate < choices_[id]->cost) {
-          choices_[id] = Choice{*candidate, node};
-          changed = true;
-        }
+        child_costs.push_back(choices_[child]->cost);
+      }
+      if (!finite) continue;
+      const auto candidate = cost(node, child_costs);
+      if (!candidate) continue;
+      if constexpr (std::floating_point<Cost>) {
+        if (!std::isfinite(*candidate))
+          throw std::invalid_argument("cost must be finite");
+      }
+      for (const auto& child : child_costs)
+        if (!(child < *candidate))
+          throw std::invalid_argument(
+              "cost policy must return a cost greater than every child");
+      if (!choices_[id] || *candidate < choices_[id]->cost) {
+        choices_[id] = Choice{*candidate, node};
+        improved = true;
       }
     }
-  } while (changed);
+    if (improved)
+      for (Id parent : graph.parent_classes(id))
+        if (!queued[parent]) {
+          queued[parent] = 1;
+          pending.push_back(parent);
+        }
+  }
 }
 
-template <Language L, class A>
+template <Language L, class A, class Cost>
   requires AnalysisFor<A, L>
-void Extractor<L, A>::check_graph() const {
+void Extractor<L, A, Cost>::check_graph() const {
   if (!graph_->is_clean() || graph_->revision() != revision_)
     throw std::logic_error(
         "extractor graph changed after extractor construction");
 }
 
-template <Language L, class A>
+template <Language L, class A, class Cost>
   requires AnalysisFor<A, L>
-const typename Extractor<L, A>::Choice& Extractor<L, A>::choice(Id root) const {
+const typename Extractor<L, A, Cost>::Choice& Extractor<L, A, Cost>::choice(
+    Id root) const {
   check_graph();
   root = graph_->find(root);
   if (root >= choices_.size() || !choices_[root])
@@ -99,15 +120,15 @@ const typename Extractor<L, A>::Choice& Extractor<L, A>::choice(Id root) const {
   return *choices_[root];
 }
 
-template <Language L, class A>
+template <Language L, class A, class Cost>
   requires AnalysisFor<A, L>
-std::size_t Extractor<L, A>::best_cost(Id root) const {
+Cost Extractor<L, A, Cost>::best_cost(Id root) const {
   return choice(root).cost;
 }
 
-template <Language L, class A>
+template <Language L, class A, class Cost>
   requires AnalysisFor<A, L>
-std::pair<std::size_t, RecExpr<L>> Extractor<L, A>::find_best(Id root) const {
+std::pair<Cost, RecExpr<L>> Extractor<L, A, Cost>::find_best(Id root) const {
   const auto root_choice = choice(root);
   const auto best_cost_value = root_choice.cost;
   root = graph_->find(root);

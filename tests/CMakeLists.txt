@@ -5,6 +5,8 @@ set(EGGC_TESTS
   parser_test
   printer_test
   rewrite_text_test
+  advanced_engine_test
+  engine_regression_test
 )
 
 foreach(test_name IN LISTS EGGC_TESTS)
