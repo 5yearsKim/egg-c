@@ -1,35 +1,29 @@
 #pragma once
-#include "id.hpp"
-#include <string>
-#include <string_view>
+#include <stdexcept>
+#include <utility>
 #include <vector>
 
+#include "language.hpp"
+
 namespace eggc {
-struct ExprId {
-  std::uint32_t value;
-  bool operator==(const ExprId &rhs) const noexcept {
-    return value == rhs.value;
+// A bottom-up DAG of application nodes. Here child IDs index earlier entries;
+// in an EGraph the same node type instead refers to e-classes.
+template <Language L>
+struct RecExpr {
+  std::vector<L> nodes;
+  Id root() const {
+    if (nodes.empty()) throw std::logic_error("empty expression has no root");
+    return static_cast<Id>(nodes.size() - 1);
+  }
+  Id add(L node) {
+    if (nodes.size() >= invalid_id)
+      throw std::overflow_error("expression too large");
+    for (Id child : node.children())
+      if (child >= nodes.size())
+        throw std::invalid_argument("expression children must precede parent");
+    Id id = static_cast<Id>(nodes.size());
+    nodes.push_back(std::move(node));
+    return id;
   }
 };
-
-struct ExprNode {
-  std::string op;
-  std::vector<ExprId> children;
-};
-
-// A tree view of an expression, convenient for callers that need nested nodes.
-struct Expr {
-  std::string op;
-  std::vector<Expr> children;
-};
-
-// A bottom-up expression DAG: every child must refer to an earlier node.
-struct RecExpr {
-  std::vector<ExprNode> nodes;
-  ExprId root() const;
-};
-
-RecExpr parse_expr(std::string_view text);
-std::string to_string(const RecExpr &expr);
-std::string to_string(const Expr &expr);
-} // namespace eggc
+}  // namespace eggc

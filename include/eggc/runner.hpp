@@ -1,9 +1,10 @@
 #pragma once
-#include "rewrite.hpp"
 #include <chrono>
 #include <optional>
 #include <string>
 #include <vector>
+
+#include "rewrite.hpp"
 
 namespace eggc {
 enum class StopReason {
@@ -11,7 +12,9 @@ enum class StopReason {
   IterationLimit,
   NodeLimit,
   TimeLimit,
-  MatchLimit
+  MatchLimit,
+  // A custom search exhausted its own bounded search budget.
+  SearchLimit
 };
 struct RunOptions {
   std::size_t iteration_limit = 10;
@@ -51,9 +54,15 @@ struct RunReport {
 };
 // Validates all rules, rebuilds the input, and searches only clean graph
 // states. Time checks are cooperative and may be exceeded by one rewrite
-// application or rebuild.
-RunReport run(EGraph &graph, const std::vector<Rewrite> &rules,
-              const RunOptions &options);
-RunReport run(EGraph &graph, const std::vector<Rewrite> &rules,
+// application or rebuild. A custom search returning false before the
+// runner's limits are hit reports SearchLimit and discards pending applications.
+template <Language L, class A>
+  requires AnalysisFor<A, L>
+RunReport run(EGraph<L, A>& graph, const std::vector<Rewrite<L, A>>& rules,
+              const RunOptions& options);
+template <Language L, class A>
+  requires AnalysisFor<A, L>
+RunReport run(EGraph<L, A>& graph, const std::vector<Rewrite<L, A>>& rules,
               std::size_t iteration_limit = 10, std::size_t node_limit = 10000);
-} // namespace eggc
+}  // namespace eggc
+#include "runner.tpp"

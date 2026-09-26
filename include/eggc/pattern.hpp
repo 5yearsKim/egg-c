@@ -1,28 +1,42 @@
 #pragma once
-#include "egraph.hpp"
 #include <functional>
+#include <string>
 #include <unordered_map>
+#include <variant>
+
+#include "egraph.hpp"
 
 namespace eggc {
-struct Pattern {
-  enum class Kind { Node, Variable };
-  std::string op;
-  std::vector<Pattern> children;
-  Kind kind = Kind::Node;
-  static Pattern var(std::string name);
-  static Pattern node(std::string op, std::vector<Pattern> children = {});
-  bool is_var() const;
+struct Var {
+  std::string name;
 };
 using Substitution = std::unordered_map<std::string, Id>;
-// Match against a rebuilt graph. Returns every distinct binding of pattern
-// variables to canonical e-class IDs; result ordering is unspecified.
-std::vector<Substitution> match(const EGraph &graph, const Pattern &pattern,
-                                Id eclass);
-// Enumerate matches until exhausted, on_match returns false, or should_stop
-// returns true. Returns true only if enumeration completed.
-bool search_matches(const EGraph &graph, const Pattern &pattern, Id eclass,
-                    const std::function<bool(const Substitution &)> &on_match,
-                    const std::function<bool()> &should_stop = {});
-Id instantiate(EGraph &graph, const Pattern &pattern,
-               const Substitution &subst);
-} // namespace eggc
+using StopCheck = std::function<bool()>;
+
+template <Language L>
+struct Pattern {
+  using Entry = std::variant<Var, L>;
+  // Node children index earlier pattern entries, just as in RecExpr.
+  std::vector<Entry> nodes;
+  static Pattern var(std::string name);
+  // prototype has the intended arity; placeholder children are replaced.
+  static Pattern node(L prototype, std::vector<Pattern> children = {});
+  void validate() const;
+  std::vector<std::string> variables() const;
+};
+
+template <Language L, class A, class Callback>
+  requires AnalysisFor<A, L>
+bool search_matches(const EGraph<L, A>& graph, const Pattern<L>& pattern,
+                    Id eclass, Callback&& on_match,
+                    const StopCheck& should_stop = {});
+template <Language L, class A>
+  requires AnalysisFor<A, L>
+std::vector<Substitution> match(const EGraph<L, A>& graph,
+                                const Pattern<L>& pattern, Id eclass);
+template <Language L, class A>
+  requires AnalysisFor<A, L>
+Id instantiate(EGraph<L, A>& graph, const Pattern<L>& pattern,
+               const Substitution& substitution);
+}  // namespace eggc
+#include "pattern.tpp"

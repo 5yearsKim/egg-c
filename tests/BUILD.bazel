@@ -3,5 +3,7 @@ load("@rules_cc//cc:cc_test.bzl", "cc_test")
 [cc_test(
     name = source[:-4],
     srcs = [source],
-    deps = ["//:eggc"] + (["//tests/support:full_scan"] if source == "egraph_test.cpp" else []),
-) for source in glob(["*_test.cpp"])]
+    # Resolve the parent package in both standalone and embedded workspaces.
+    deps = ["//%s:eggc" % "/".join(package_name().split("/")[:-1])],
+    visibility = ["//visibility:public"],
+) for source in ["language_test.cpp", "concepts_test.cpp"]]
