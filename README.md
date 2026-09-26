@@ -1,57 +1,80 @@
 # egg-c
 
-A C++20 e-graph library inspired by [egg](https://github.com/egraphs-good/egg).
-The application defines its node type outside this package.
-The `Language` and `AnalysisFor` concepts check the required interfaces at
-compile time. The engine stores
-that type directly and does not depend on an operator vocabulary, TensorLang,
-or MLIR.
+A header-only C++20 e-graph library inspired by [egg](https://github.com/egraphs-good/egg).
+Use the supplied `SymbolLang` to get started, or provide a custom node type and
+analysis for your application.
 
 ```cpp
-using Graph = eggc::EGraph<MyNode, MyAnalysis>;
-using Expr = eggc::RecExpr<MyNode>;
-using Pattern = eggc::Pattern<MyNode>;
-using Rewrite = eggc::Rewrite<MyNode, MyAnalysis>;
-using Extractor = eggc::Extractor<MyNode, MyAnalysis>;
+#include <eggc/all.hpp>
+#include <iostream>
+#include <vector>
+
+int main() {
+    using eggc::rewrite;
+    auto input = eggc::parse_expr("(+ 0 (* 1 a))");
+    std::vector rules{
+        rewrite("commute-add", "(+ ?x ?y)", "(+ ?y ?x)"),
+        rewrite("add-zero", "(+ ?x 0)", "?x"),
+        rewrite("mul-one", "(* 1 ?x)", "?x"),
+    };
+
+    eggc::EGraph<eggc::SymbolLang> graph;
+    auto root = graph.add_expr(input);
+    auto report = eggc::run(graph, rules);
+    if (report.reason != eggc::StopReason::Saturated) return 1;
+
+    auto [cost, best] = eggc::Extractor<eggc::SymbolLang>(graph).find_best(root);
+    std::cout << eggc::to_string(best) << '\n'; // a
+}
 ```
 
-`MyAnalysis` is optional: `EGraph<MyNode>` uses `NoAnalysis<MyNode>`.
-See [the custom-language guide](docs/custom_languages.md) for the complete node
-contract, pattern construction, typed analysis, and custom rewrite callbacks.
-The [external-language regression test](tests/language_test.cpp) is a working
-example that requires no TensorLang or MLIR dependencies.
+`SymbolLang` stores symbols, including `0` and `1`; it does not perform arithmetic
+by itself. Rewrite rules supply equations. Custom languages can store typed
+values and attributes, with optional parsing through `LanguageIO<L>`.
+Conditional rules use `Condition<L, A>` to inspect matches and analysis facts.
 
-## Build and test
+## Build and run
 
 ```sh
-cmake -S . -B /tmp/eggc-build
+cmake -S . -B /tmp/eggc-build -DCMAKE_BUILD_TYPE=Release
 cmake --build /tmp/eggc-build
 ctest --test-dir /tmp/eggc-build --output-on-failure
+/tmp/eggc-build/examples/tutorial_getting_started
 ```
 
-From this package's standalone Bazel workspace:
+Or use Bazel:
 
 ```sh
-bazel build //:eggc
-bazel test //tests:all
+bazel test //tests:all //examples:all
+bazel run //examples:tutorial_getting_started
 ```
 
-CMake propagates the C++20 requirement through its interface target. Standalone
-Bazel uses `-std=c++20` from `.bazelrc`. Other Bazel consumers must enable C++20
-for their own source files; a header-only dependency cannot propagate `copts`.
-In the parent XLA workspace, use `--config=joint_shard`: it selects C++20 only for
-`research/joint_shard/` sources and uses the hermetic GCC 12 / glibc 2.35 sysroot
-needed for C++20 library headers. Dependencies retain C++17 source flags and use
-that sysroot too. Other XLA builds retain their defaults. These Linux binaries
-require glibc 2.35 or newer to run.
+Examples build by default; use `-DEGGC_BUILD_EXAMPLES=OFF` to omit them. CMake
+consumers link the `eggc` interface target, which supplies the include path and
+C++20 requirement. External Bazel consumers must enable C++20 in their workspace.
+There is no compiled library to link.
 
-The CMake target is an interface library. Generic algorithms are defined in
-headers and included `.tpp` files so external node types can instantiate them.
-Concrete language methods, analysis, and application rewrites can be implemented
-in the application's `.cpp` files. Empty engine `.cpp` placeholders have been
-removed.
+## Learn
 
-The previous string parser, default string language, arithmetic analysis,
-operator-variable matching, tree-expression API, and related demo/benchmark/
-differential tooling have been removed. This interface intentionally breaks
-compatibility with that API.
+- [Getting started](docs/tutorial_getting_started.md): expressions, patterns, and optimization.
+- [Custom languages](docs/custom_languages.md): typed nodes and parsing.
+- [Conditional rewrites](docs/conditional_rewrites.md): rules that require proven facts.
+- [Code structure](docs/architecture.md): header responsibilities and a reading order.
+- [Runnable examples](examples/): all examples also run as tests.
+
+## Layout
+
+```text
+include/eggc/   Public API headers
+  impl/        Included template implementations and text syntax helpers
+examples/      Runnable examples
+tests/         Engine and API regression tests
+docs/          Short guides
+misc/images/   Artwork
+```
+
+Use `eggc/all.hpp` for the complete library, `eggc/core.hpp` for the generic
+engine, or `eggc/text.hpp` for symbols and text-based rules. Individual public
+headers also work. Template definitions live in `impl/` and are included
+automatically; ship that directory with the headers. The library remains
+header-only, with no `src/` directory.

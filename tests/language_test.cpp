@@ -5,19 +5,19 @@
 #include <stdexcept>
 #include <string>
 
-#include "eggc/all.hpp"
+#include "eggc/core.hpp"
 
 namespace {
-#define CHECK(expr)                               \
-  do {                                            \
-    if (!(expr)) throw std::runtime_error(#expr); \
+#define CHECK(expr)                                                            \
+  do {                                                                         \
+    if (!(expr))                                                               \
+      throw std::runtime_error(#expr);                                         \
   } while (false)
-template <class Exception, class F>
-void throws(F f) {
+template <class Exception, class F> void throws(F f) {
   bool caught = false;
   try {
     f();
-  } catch (const Exception&) {
+  } catch (const Exception &) {
     caught = true;
   }
   CHECK(caught);
@@ -32,17 +32,18 @@ struct Node {
   std::vector<eggc::Id> args;
   using Discriminant = Kind;
   Kind discriminant() const { return kind; }
-  const auto& children() const { return args; }
-  auto& children_mut() { return args; }
-  bool matches(const Node& n) const {
+  const auto &children() const { return args; }
+  auto &children_mut() { return args; }
+  bool matches(const Node &n) const {
     return kind == n.kind && payload == n.payload &&
            args.size() == n.args.size();
   }
-  bool operator==(const Node& n) const { return matches(n) && args == n.args; }
+  bool operator==(const Node &n) const { return matches(n) && args == n.args; }
   std::size_t hash() const {
     std::size_t h = std::hash<int>{}(static_cast<int>(kind));
     eggc::hash_combine(h, std::hash<int>{}(payload));
-    for (auto child : args) eggc::hash_combine(h, child);
+    for (auto child : args)
+      eggc::hash_combine(h, child);
     return h;
   }
 };
@@ -117,7 +118,7 @@ void exact_patterns_and_backtracking() {
   g.rebuild();
   CHECK(eggc::match(g, add(Pat::var("x"), Pat::var("y")), aa).size() == 1);
   bool emitted = false;
-  CHECK(!eggc::search_matches(g, repeated, aa, [&](const eggc::Substitution&) {
+  CHECK(!eggc::search_matches(g, repeated, aa, [&](const eggc::Substitution &) {
     emitted = true;
     return false;
   }));
@@ -158,7 +159,7 @@ void extraction_and_expressions() {
   throws<std::logic_error>([&] { extractor.find_best(root); });
   throws<std::invalid_argument>([&] {
     eggc::Extractor<Node> bad(g,
-                              [](const Node&, const std::vector<std::size_t>&)
+                              [](const Node &, const std::vector<std::size_t> &)
                                   -> std::optional<std::size_t> { return 0; });
   });
   CHECK(!eggc::ast_size_cost<Node>()(
@@ -172,7 +173,7 @@ void extraction_and_expressions() {
   throws<std::runtime_error>([&] {
     eggc::Extractor<Node> no_finite(
         g,
-        [](const Node&, const std::vector<std::size_t>&)
+        [](const Node &, const std::vector<std::size_t> &)
             -> std::optional<std::size_t> { return std::nullopt; });
     no_finite.best_cost(root);
   });
@@ -182,18 +183,24 @@ struct ValueAnalysis;
 using ValueGraph = eggc::EGraph<Node, ValueAnalysis>;
 struct ValueAnalysis {
   using Data = std::optional<int>;
-  Data make(const ValueGraph& g, const Node& node) const {
-    if (node.kind == Kind::Unknown) return {};
-    if (node.kind == Kind::Leaf) return node.payload;
+  Data make(const ValueGraph &g, const Node &node) const {
+    if (node.kind == Kind::Unknown)
+      return {};
+    if (node.kind == Kind::Leaf)
+      return node.payload;
     auto value = g.analysis_data(node.args.at(0));
-    if (!value) return {};
-    if (node.kind == Kind::Shift) return *value + node.payload;
+    if (!value)
+      return {};
+    if (node.kind == Kind::Shift)
+      return *value + node.payload;
     auto rhs = g.analysis_data(node.args.at(1));
     return rhs ? Data{*value + *rhs} : Data{};
   }
-  eggc::AnalysisMerge merge(Data& into, const Data& from) const {
-    if (!from || into == from) return eggc::AnalysisMerge::Unchanged;
-    if (into) return eggc::AnalysisMerge::Conflict;
+  eggc::AnalysisMerge merge(Data &into, const Data &from) const {
+    if (!from || into == from)
+      return eggc::AnalysisMerge::Unchanged;
+    if (into)
+      return eggc::AnalysisMerge::Conflict;
     into = from;
     return eggc::AnalysisMerge::Changed;
   }
@@ -245,7 +252,7 @@ void runner_and_guards() {
   guarded.condition = eggc::Condition<Node>{
       "reject",
       {"?a"},
-      [](const Graph& snapshot, eggc::Id, const eggc::Substitution&) {
+      [](const Graph &snapshot, eggc::Id, const eggc::Substitution &) {
         CHECK(snapshot.is_clean());
         return false;
       }};
@@ -263,15 +270,17 @@ void runner_and_guards() {
 void runner_limits() {
   Graph bounded;
   bounded.add(leaf(1));
-  Rule stopped{"bounded-custom-search", [](const Graph&, const Rule::Sink&,
-                                           const eggc::StopCheck&) { return false; }};
-  CHECK(eggc::run(bounded, std::vector<Rule>{stopped}).reason == eggc::StopReason::SearchLimit);
+  Rule stopped{"bounded-custom-search",
+               [](const Graph &, const Rule::Sink &, const eggc::StopCheck &) {
+                 return false;
+               }};
+  CHECK(eggc::run(bounded, std::vector<Rule>{stopped}).reason ==
+        eggc::StopReason::SearchLimit);
   CHECK(bounded.node_count() == 1);
   CHECK(bounded.is_clean());
-  Rule rejected{"rejected-custom-match", [](const Graph&, const Rule::Sink& emit,
-                                            const eggc::StopCheck&) {
-    return emit({0, {}, false});
-  }};
+  Rule rejected{"rejected-custom-match",
+                [](const Graph &, const Rule::Sink &emit,
+                   const eggc::StopCheck &) { return emit({0, {}, false}); }};
   auto rejection = eggc::run(bounded, std::vector<Rule>{rejected});
   CHECK(rejection.history.front().matches == 1);
   CHECK(rejection.history.front().condition_checks == 1);
@@ -279,7 +288,9 @@ void runner_limits() {
   CHECK(rejection.history.front().applications == 0);
   eggc::RunOptions rejected_limit;
   rejected_limit.match_limit = 0;
-  CHECK(eggc::run(bounded, std::vector<Rule>{rejected}, rejected_limit).reason == eggc::StopReason::MatchLimit);
+  CHECK(
+      eggc::run(bounded, std::vector<Rule>{rejected}, rejected_limit).reason ==
+      eggc::StopReason::MatchLimit);
   Graph g;
   auto a = g.add(leaf(1)), b = g.add(leaf(2));
   auto root = g.add(Node{Kind::Add, 0, {a, b}});
@@ -322,15 +333,16 @@ void custom_search_preserves_attrs_and_limits() {
   g.merge(x, y);
   std::set<int> captured;
   Rule copy{
-      "copy", [&, b](const Graph& snapshot, const Rule::Sink& emit,
-                     const eggc::StopCheck& stop) {
+      "copy", [&, b](const Graph &snapshot, const Rule::Sink &emit,
+                     const eggc::StopCheck &stop) {
         CHECK(snapshot.is_clean());
         for (auto root : snapshot.classes_for_op(Kind::Shift)) {
           for (Node node : snapshot.nodes(root)) {
-            if (stop && stop()) return false;
+            if (stop && stop())
+              return false;
             captured.insert(node.payload);
             node.args = {b};
-            if (!emit({root, [node](Graph& target) -> std::optional<eggc::Id> {
+            if (!emit({root, [node](Graph &target) -> std::optional<eggc::Id> {
                          return target.add(node);
                        }}))
               return false;
@@ -352,9 +364,9 @@ void custom_search_preserves_attrs_and_limits() {
   CHECK(g.nodes(x).size() == 4);
   CHECK(g.find(x) == g.find(g.add(Node{Kind::Shift, 3, {b}})));
   CHECK(g.find(x) == g.find(g.add(Node{Kind::Shift, 4, {b}})));
-  Rule skipped{"skip", [x](const Graph&, const Rule::Sink& emit,
-                           const eggc::StopCheck&) {
-                 return emit({x, [](Graph&) -> std::optional<eggc::Id> {
+  Rule skipped{"skip", [x](const Graph &, const Rule::Sink &emit,
+                           const eggc::StopCheck &) {
+                 return emit({x, [](Graph &) -> std::optional<eggc::Id> {
                                 return std::nullopt;
                               }});
                }};
@@ -371,7 +383,8 @@ void randomized_congruence_oracle() {
     std::vector<Node> terms;
     std::vector<eggc::Id> graph_ids, parent;
     auto find = [&](eggc::Id x) {
-      while (parent[x] != x) x = parent[x];
+      while (parent[x] != x)
+        x = parent[x];
       return x;
     };
     auto merge = [&](eggc::Id a, eggc::Id b) { parent[find(b)] = find(a); };
@@ -388,7 +401,8 @@ void randomized_congruence_oracle() {
       }
       terms.push_back(n);
       parent.push_back(i);
-      for (auto& child : n.args) child = graph_ids[child];
+      for (auto &child : n.args)
+        child = graph_ids[child];
       graph_ids.push_back(g.add(n));
     }
     for (int i = 0; i < 15; ++i) {
@@ -402,7 +416,8 @@ void randomized_congruence_oracle() {
       changed = false;
       for (eggc::Id a = 0; a < terms.size(); ++a)
         for (eggc::Id b = 0; b < a; ++b) {
-          if (find(a) == find(b) || !terms[a].matches(terms[b])) continue;
+          if (find(a) == find(b) || !terms[a].matches(terms[b]))
+            continue;
           bool equal = true;
           for (std::size_t c = 0; c < terms[a].args.size(); ++c)
             equal &= find(terms[a].args[c]) == find(terms[b].args[c]);
@@ -418,11 +433,12 @@ void randomized_congruence_oracle() {
         CHECK((find(a) == find(b)) ==
               (g.find(graph_ids[a]) == g.find(graph_ids[b])));
     for (auto root : g.classes())
-      for (const Node& node : g.nodes(root))
-        for (auto child : node.args) CHECK(child == g.find(child));
+      for (const Node &node : g.nodes(root))
+        for (auto child : node.args)
+          CHECK(child == g.find(child));
   }
 }
-}  // namespace
+} // namespace
 int main() {
   try {
     identity_and_congruence();
@@ -434,7 +450,7 @@ int main() {
     custom_search_preserves_attrs_and_limits();
     randomized_congruence_oracle();
     std::cout << "8 external-language regression groups passed\n";
-  } catch (const std::exception& error) {
+  } catch (const std::exception &error) {
     std::cerr << error.what() << '\n';
     return 1;
   }

@@ -55,14 +55,15 @@ struct RunReport {
 // Validates all rules, rebuilds the input, and searches only clean graph
 // states. Time checks are cooperative and may be exceeded by one rewrite
 // application or rebuild. A custom search returning false before the
-// runner's limits are hit reports SearchLimit and discards pending applications.
+// runner's limits are hit reports SearchLimit and discards pending
+// applications.
 template <Language L, class A>
   requires AnalysisFor<A, L>
-RunReport run(EGraph<L, A>& graph, const std::vector<Rewrite<L, A>>& rules,
-              const RunOptions& options);
+RunReport run(EGraph<L, A> &graph, const std::vector<Rewrite<L, A>> &rules,
+              const RunOptions &options);
 template <Language L, class A>
   requires AnalysisFor<A, L>
-RunReport run(EGraph<L, A>& graph, const std::vector<Rewrite<L, A>>& rules,
+RunReport run(EGraph<L, A> &graph, const std::vector<Rewrite<L, A>> &rules,
               std::size_t iteration_limit = 10, std::size_t node_limit = 10000);
-}  // namespace eggc
-#include "runner.tpp"
+} // namespace eggc
+#include "impl/runner.tpp"

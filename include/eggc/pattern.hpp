@@ -13,8 +13,7 @@ struct Var {
 using Substitution = std::unordered_map<std::string, Id>;
 using StopCheck = std::function<bool()>;
 
-template <Language L>
-struct Pattern {
+template <Language L> struct Pattern {
   using Entry = std::variant<Var, L>;
   // Node children index earlier pattern entries, just as in RecExpr.
   std::vector<Entry> nodes;
@@ -27,16 +26,16 @@ struct Pattern {
 
 template <Language L, class A, class Callback>
   requires AnalysisFor<A, L>
-bool search_matches(const EGraph<L, A>& graph, const Pattern<L>& pattern,
-                    Id eclass, Callback&& on_match,
-                    const StopCheck& should_stop = {});
+bool search_matches(const EGraph<L, A> &graph, const Pattern<L> &pattern,
+                    Id eclass, Callback &&on_match,
+                    const StopCheck &should_stop = {});
 template <Language L, class A>
   requires AnalysisFor<A, L>
-std::vector<Substitution> match(const EGraph<L, A>& graph,
-                                const Pattern<L>& pattern, Id eclass);
+std::vector<Substitution> match(const EGraph<L, A> &graph,
+                                const Pattern<L> &pattern, Id eclass);
 template <Language L, class A>
   requires AnalysisFor<A, L>
-Id instantiate(EGraph<L, A>& graph, const Pattern<L>& pattern,
-               const Substitution& substitution);
-}  // namespace eggc
-#include "pattern.tpp"
+Id instantiate(EGraph<L, A> &graph, const Pattern<L> &pattern,
+               const Substitution &substitution);
+} // namespace eggc
+#include "impl/pattern.tpp"
