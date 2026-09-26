@@ -3,7 +3,7 @@
 #include <memory>
 #include <span>
 
-#include "eggc/all.hpp"
+#include "eggc/core.hpp"
 
 namespace {
 struct Node {
@@ -12,15 +12,16 @@ struct Node {
   int value = 0;
   std::vector<eggc::Id> operands;
   Kind discriminant() const { return Kind::Value; }
-  const auto& children() const { return operands; }
-  auto& children_mut() { return operands; }
-  bool matches(const Node& other) const {
+  const auto &children() const { return operands; }
+  auto &children_mut() { return operands; }
+  bool matches(const Node &other) const {
     return value == other.value && operands.size() == other.operands.size();
   }
-  bool operator==(const Node&) const = default;
+  bool operator==(const Node &) const = default;
   std::size_t hash() const {
     std::size_t result = std::hash<int>{}(value);
-    for (auto child : operands) eggc::hash_combine(result, child);
+    for (auto child : operands)
+      eggc::hash_combine(result, child);
     return result;
   }
 };
@@ -35,8 +36,8 @@ struct SpanNode : Node {
 };
 struct ArrayNode : Node {
   std::array<eggc::Id, 0> children_storage;
-  const auto& children() const { return children_storage; }
-  auto& children_mut() { return children_storage; }
+  const auto &children() const { return children_storage; }
+  auto &children_mut() { return children_storage; }
 };
 struct NonDefaultNode : Node {
   explicit NonDefaultNode(int v) { value = v; }
@@ -54,7 +55,7 @@ struct MissingHash : Node {
   void hash() const = delete;
 };
 struct MissingMatches : Node {
-  void matches(const MissingMatches&) const = delete;
+  void matches(const MissingMatches &) const = delete;
 };
 struct MissingChildren : Node {
   void children() const = delete;
@@ -63,13 +64,13 @@ struct MissingMutableChildren : Node {
   void children_mut() = delete;
 };
 struct MissingEquality : Node {
-  bool operator==(const MissingEquality&) const = delete;
+  bool operator==(const MissingEquality &) const = delete;
 };
 struct WrongHash : Node {
   int hash() const { return 0; }
 };
 struct WrongMatches : Node {
-  int matches(const WrongMatches&) const { return 1; }
+  int matches(const WrongMatches &) const { return 1; }
 };
 struct WrongDiscriminant : Node {
   int discriminant() const { return 0; }
@@ -78,27 +79,27 @@ struct OwningChildrenTemporary : Node {
   auto children() const { return operands; }
 };
 struct ReadOnlyMutableChildren : Node {
-  const auto& children_mut() { return operands; }
+  const auto &children_mut() { return operands; }
 };
 struct MutableConstChildren : Node {
   mutable std::vector<eggc::Id> mutable_operands;
-  auto& children() const { return mutable_operands; }
+  auto &children() const { return mutable_operands; }
 };
 struct WrongChildType : Node {
   std::vector<int> other_operands;
-  const auto& children() const { return other_operands; }
-  auto& children_mut() { return other_operands; }
+  const auto &children() const { return other_operands; }
+  auto &children_mut() { return other_operands; }
 };
 struct NonIndexedChildren : Node {
   std::list<eggc::Id> other_operands;
-  const auto& children() const { return other_operands; }
-  auto& children_mut() { return other_operands; }
+  const auto &children() const { return other_operands; }
+  auto &children_mut() { return other_operands; }
 };
 struct NonCopyableNode : Node {
   std::unique_ptr<int> data;
 };
 struct UnhashableKey {
-  bool operator==(const UnhashableKey&) const = default;
+  bool operator==(const UnhashableKey &) const = default;
 };
 struct UnhashableDiscriminant : Node {
   using Discriminant = UnhashableKey;
@@ -142,13 +143,14 @@ static_assert(RewriteAccepts<Node> && !RewriteAccepts<MissingEquality>);
 
 struct Analysis {
   using Data = std::optional<int>;
-  template <class Graph>
-  Data make(const Graph&, const Node& n) const {
+  template <class Graph> Data make(const Graph &, const Node &n) const {
     return n.value;
   }
-  eggc::AnalysisMerge merge(Data& into, const Data& from) const {
-    if (!from || into == from) return eggc::AnalysisMerge::Unchanged;
-    if (into) return eggc::AnalysisMerge::Conflict;
+  eggc::AnalysisMerge merge(Data &into, const Data &from) const {
+    if (!from || into == from)
+      return eggc::AnalysisMerge::Unchanged;
+    if (into)
+      return eggc::AnalysisMerge::Conflict;
     into = from;
     return eggc::AnalysisMerge::Changed;
   }
@@ -161,13 +163,12 @@ struct MissingMerge : Analysis {
   void merge() const = delete;
 };
 struct WrongMake : Analysis {
-  template <class Graph>
-  int make(const Graph&, const Node&) const {
+  template <class Graph> int make(const Graph &, const Node &) const {
     return 0;
   }
 };
 struct WrongMerge : Analysis {
-  bool merge(Data&, const Data&) const { return false; }
+  bool merge(Data &, const Data &) const { return false; }
 };
 struct NonCopyableData : Analysis {
   using Data = std::unique_ptr<int>;
@@ -194,11 +195,11 @@ static_assert(RewriteAcceptsAnalysis<Analysis> &&
 struct SelfAnalysis;
 using SelfGraph = eggc::EGraph<Node, SelfAnalysis>;
 struct SelfAnalysis : Analysis {
-  Data make(const SelfGraph&, const Node& n) const { return n.value; }
+  Data make(const SelfGraph &, const Node &n) const { return n.value; }
 };
 static_assert(eggc::AnalysisFor<SelfAnalysis, Node>);
 static_assert(sizeof(SelfGraph) > 0);
-}  // namespace
+} // namespace
 
 int main() {
   // Instantiate actual algorithms for borrowed spans, arrays and nondefault
@@ -212,15 +213,18 @@ int main() {
   auto root = spans.add(parent);
   spans.rebuild();
   auto [cost, expression] = eggc::Extractor<SpanNode>(spans).find_best(root);
-  if (cost != 2 || expression.nodes.size() != 2) return 1;
+  if (cost != 2 || expression.nodes.size() != 2)
+    return 1;
   auto pattern = eggc::Pattern<SpanNode>::node(
       parent, {eggc::Pattern<SpanNode>::var("x")});
-  if (eggc::match(spans, pattern, root).size() != 1) return 1;
+  if (eggc::match(spans, pattern, root).size() != 1)
+    return 1;
 
   eggc::EGraph<ArrayNode> arrays;
   auto array_root = arrays.add(ArrayNode{});
   arrays.rebuild();
-  if (eggc::Extractor<ArrayNode>(arrays).best_cost(array_root) != 1) return 1;
+  if (eggc::Extractor<ArrayNode>(arrays).best_cost(array_root) != 1)
+    return 1;
 
   eggc::EGraph<NonDefaultNode> nondefault;
   auto nondefault_root = nondefault.add(NonDefaultNode{7});

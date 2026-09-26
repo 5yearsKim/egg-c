@@ -1,0 +1,8 @@
+foreach(example_name tutorial_getting_started custom_language conditional_rewrite)
+  add_executable(${example_name} ${example_name}.cpp)
+  target_link_libraries(${example_name} PRIVATE eggc)
+  set_target_properties(${example_name} PROPERTIES CXX_EXTENSIONS OFF)
+  if(BUILD_TESTING)
+    add_test(NAME ${example_name} COMMAND ${example_name})
+  endif()
+endforeach()
