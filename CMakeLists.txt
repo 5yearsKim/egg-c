@@ -19,6 +19,7 @@ set_target_properties(eggc PROPERTIES CXX_EXTENSIONS OFF)
 if(BUILD_TESTING OR EGGC_BUILD_BENCHMARKS)
     add_library(eggc_test_support STATIC tests/support/full_scan.cpp)
     target_link_libraries(eggc_test_support PUBLIC eggc)
+    target_include_directories(eggc_test_support PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
 endif()
 
 if(EGGC_BUILD_EXAMPLES)

@@ -1,4 +1,4 @@
-#include "eggc/testing.hpp"
+#include "testing.hpp"
 #include <iostream>
 #include <random>
 #include <vector>
