@@ -6,34 +6,34 @@
 
 namespace eggc {
 namespace dot_detail {
-inline std::string quote(const std::string &text) {
+inline std::string quote(const std::string& text) {
   std::string result = "\"";
   for (char c : text) {
     switch (c) {
-    case '\\':
-      result += "\\\\";
-      break;
-    case '"':
-      result += "\\\"";
-      break;
-    case '\n':
-      result += "\\n";
-      break;
-    case '\r':
-      result += "\\r";
-      break;
-    case '\t':
-      result += "\\t";
-      break;
-    default:
-      result += c;
+      case '\\':
+        result += "\\\\";
+        break;
+      case '"':
+        result += "\\\"";
+        break;
+      case '\n':
+        result += "\\n";
+        break;
+      case '\r':
+        result += "\\r";
+        break;
+      case '\t':
+        result += "\\t";
+        break;
+      default:
+        result += c;
     }
   }
   return result + '"';
 }
-} // namespace dot_detail
+}  // namespace dot_detail
 template <Language L, class A, class Formatter>
-std::string to_dot(const EGraph<L, A> &graph, Formatter format) {
+std::string to_dot(const EGraph<L, A>& graph, Formatter format) {
   graph.require_clean();
   std::string result = "digraph egraph {\n  compound=true;\n";
   for (Id id : graph.classes()) {
@@ -41,7 +41,7 @@ std::string to_dot(const EGraph<L, A> &graph, Formatter format) {
               " {\n    label=\"e" + std::to_string(id) + "\";\n";
     result += "    e" + std::to_string(id) + " [shape=point];\n";
     std::size_t index = 0;
-    for (const auto &node : graph.nodes(id)) {
+    for (const auto& node : graph.nodes(id)) {
       result += "    n" + std::to_string(id) + "_" + std::to_string(index++) +
                 " [label=" + dot_detail::quote(format(node)) + "];\n";
     }
@@ -49,7 +49,7 @@ std::string to_dot(const EGraph<L, A> &graph, Formatter format) {
   }
   for (Id id : graph.classes()) {
     std::size_t index = 0;
-    for (const auto &node : graph.nodes(id)) {
+    for (const auto& node : graph.nodes(id)) {
       std::size_t child_index = 0;
       for (Id child : node.children())
         result += "  n" + std::to_string(id) + "_" + std::to_string(index) +
@@ -61,8 +61,8 @@ std::string to_dot(const EGraph<L, A> &graph, Formatter format) {
   return result + "}\n";
 }
 template <PrintableLanguage L, class A>
-std::string to_dot(const EGraph<L, A> &graph) {
+std::string to_dot(const EGraph<L, A>& graph) {
   return to_dot(graph,
-                [](const L &node) { return LanguageIO<L>::format_op(node); });
+                [](const L& node) { return LanguageIO<L>::format_op(node); });
 }
-} // namespace eggc
+}  // namespace eggc

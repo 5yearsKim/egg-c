@@ -57,6 +57,8 @@ const char* reason(eggc::StopReason value) {
       return "match_limit";
     case eggc::StopReason::UserRequested:
       return "user_requested";
+    case eggc::StopReason::MemoryLimit:
+      return "memory_limit";
     case eggc::StopReason::SearchLimit:
       return "search_limit";
   }

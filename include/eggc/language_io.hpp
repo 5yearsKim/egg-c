@@ -12,7 +12,8 @@ namespace eggc {
 // arity. from_op preserves children in order and throws std::invalid_argument
 // for an unsupported token or arity. format_op returns the operator/literal
 // alone.
-template <class L> struct LanguageIO;
+template <class L>
+struct LanguageIO;
 
 template <class L>
 concept ParseableLanguage =
@@ -21,7 +22,7 @@ concept ParseableLanguage =
     };
 
 template <class L>
-concept PrintableLanguage = Language<L> && requires(const L &node) {
+concept PrintableLanguage = Language<L> && requires(const L& node) {
   { LanguageIO<L>::format_op(node) } -> std::same_as<std::string>;
 };
-} // namespace eggc
+}  // namespace eggc

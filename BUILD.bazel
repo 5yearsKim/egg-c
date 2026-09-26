@@ -5,6 +5,7 @@ cc_library(
     hdrs = glob([
         "include/eggc/*.hpp",
         "include/eggc/impl/*.hpp",
+        "include/eggc/detail/*.hpp",
         "include/eggc/impl/*.tpp",
     ]),
     strip_include_prefix = "include",

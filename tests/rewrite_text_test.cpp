@@ -8,9 +8,8 @@ namespace {
 using Node = eggc::SymbolLang;
 struct Values {
   using Data = std::optional<int>;
-  Data make(const eggc::EGraph<Node, Values> &, const Node &node) const {
-    if (!node.args.empty())
-      return {};
+  Data make(const eggc::EGraph<Node, Values>&, const Node& node) const {
+    if (!node.args.empty()) return {};
     int value;
     auto [end, error] =
         std::from_chars(node.op.data(), node.op.data() + node.op.size(), value);
@@ -18,32 +17,30 @@ struct Values {
       return value;
     return {};
   }
-  eggc::AnalysisMerge merge(Data &into, const Data &from) const {
-    if (!from || into == from)
-      return eggc::AnalysisMerge::Unchanged;
-    if (into)
-      return eggc::AnalysisMerge::Conflict;
+  eggc::AnalysisMerge merge(Data& into, const Data& from) const {
+    if (!from || into == from) return eggc::AnalysisMerge::Unchanged;
+    if (into) return eggc::AnalysisMerge::Conflict;
     into = from;
     return eggc::AnalysisMerge::Changed;
   }
 };
 using Graph = eggc::EGraph<Node, Values>;
-void check(bool value, const char *message) {
-  if (!value)
-    throw std::runtime_error(message);
+void check(bool value, const char* message) {
+  if (!value) throw std::runtime_error(message);
 }
-template <class F> void fails(F fn, std::string_view fragment) {
+template <class F>
+void fails(F fn, std::string_view fragment) {
   try {
     fn();
-  } catch (const std::invalid_argument &error) {
-    check(std::string_view(error.what()).find(fragment) !=
-              std::string_view::npos,
-          "missing error context");
+  } catch (const std::invalid_argument& error) {
+    check(
+        std::string_view(error.what()).find(fragment) != std::string_view::npos,
+        "missing error context");
     return;
   }
   throw std::runtime_error("expected rewrite validation error");
 }
-} // namespace
+}  // namespace
 int main() {
   try {
     const auto parsed = eggc::rewrite("add-zero", "(+ ?x 0)", "?x");
@@ -53,7 +50,7 @@ int main() {
         Pat::node(Node::node("+", {0, 0}),
                   {Pat::var("x"), Pat::node(Node::leaf("0"))}),
         Pat::var("x")};
-    for (const auto &rule : {parsed, built}) {
+    for (const auto& rule : {parsed, built}) {
       eggc::EGraph<Node> graph;
       auto root = graph.add_expr(eggc::parse_expr("(+ a 0)"));
       check(eggc::run(graph, std::vector{rule}).reason ==
@@ -69,7 +66,7 @@ int main() {
     bool caught = false;
     try {
       eggc::rewrite("location", "?x", "\n (");
-    } catch (const eggc::ParseError &error) {
+    } catch (const eggc::ParseError& error) {
       caught = true;
       check(error.line() == 2 && error.column() == 3,
             "rewrite source location");
@@ -80,9 +77,9 @@ int main() {
     eggc::Condition<Node, Values> nonzero{
         "nonzero",
         {"?x"},
-        [&](const Graph &graph, eggc::Id, const eggc::Substitution &subst) {
+        [&](const Graph& graph, eggc::Id, const eggc::Substitution& subst) {
           saw_clean = graph.is_clean();
-          const auto &value = graph.analysis_data(subst.at("?x"));
+          const auto& value = graph.analysis_data(subst.at("?x"));
           return value && *value != 0;
         }};
     // Infer both Node and Values from the condition, or specify them
@@ -91,7 +88,7 @@ int main() {
     auto explicit_rule =
         eggc::rewrite<Node, Values>("div-self", "(/ ?x ?x)", "1", nonzero);
     static_assert(std::same_as<decltype(guarded), eggc::Rewrite<Node, Values>>);
-    for (const auto *input : {"(/ 2 2)", "(/ 0 0)", "(/ a a)"}) {
+    for (const auto* input : {"(/ 2 2)", "(/ 0 0)", "(/ a a)"}) {
       Graph graph;
       auto root = graph.add_expr(eggc::parse_expr(input));
       const auto initial_nodes = graph.node_count();
@@ -113,12 +110,12 @@ int main() {
     auto unknown = graph.add(Node::leaf("a"));
     eggc::run(graph, std::vector{explicit_rule});
     graph.merge(unknown,
-                graph.add(Node::leaf("2"))); // Supply a new proven fact.
+                graph.add(Node::leaf("2")));  // Supply a new proven fact.
     eggc::run(graph, std::vector{guarded});
-    check(eggc::to_string(
-              eggc::Extractor<Node, Values>(graph).find_best(root).second) ==
-              "1",
-          "new analysis fact");
+    check(
+        eggc::to_string(
+            eggc::Extractor<Node, Values>(graph).find_best(root).second) == "1",
+        "new analysis fact");
     auto bad = nonzero;
     bad.required_variables = {"?missing"};
     fails([&] { eggc::rewrite("bad-condition", "?x", "?x", bad); },
@@ -138,7 +135,7 @@ int main() {
     check(limited.node_count() == count && limited.find(unchanged) == unchanged,
           "limited run mutation");
     std::cout << "Text rewrite and condition checks passed\n";
-  } catch (const std::exception &error) {
+  } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';
     return 1;
   }

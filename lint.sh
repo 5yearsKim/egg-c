@@ -31,7 +31,7 @@ USAGE
   shift
 done
 
-for tool in clang-format; do
+for tool in clang-format rg; do
   if ! command -v "$tool" >/dev/null 2>&1; then
     printf 'Required tool not found: %s\n' "$tool" >&2
     exit 127
@@ -39,7 +39,7 @@ for tool in clang-format; do
 done
 
 if [[ "$run_tidy" == "true" ]]; then
-  for tool in cmake clang-tidy; do
+  for tool in cmake clang-tidy python3; do
     if ! command -v "$tool" >/dev/null 2>&1; then
       printf 'Required tool not found: %s\n' "$tool" >&2
       exit 127
@@ -49,13 +49,11 @@ fi
 
 mapfile -t cpp_files < <(
   cd "$root_dir"
-  find include tests examples -type f \
-    \( -name '*.cpp' -o -name '*.cc' -o -name '*.cxx' \) -print | sort
+  rg --files include tests examples benchmarks -g '*.cpp' -g '*.cc' -g '*.cxx' | sort
 )
 mapfile -t format_files < <(
   cd "$root_dir"
-  find include tests examples -type f \
-    \( -name '*.hpp' -o -name '*.h' -o -name '*.cpp' -o -name '*.cc' -o -name '*.cxx' \) -print | sort
+  rg --files include tests examples benchmarks -g '*.hpp' -g '*.h' -g '*.tpp' -g '*.cpp' -g '*.cc' -g '*.cxx' | sort
 )
 
 if ((${#cpp_files[@]} == 0)); then
@@ -73,9 +71,17 @@ fi
 
 if [[ "$run_tidy" == "true" ]]; then
   printf 'Configuring CMake compilation database in %s...\n' "$build_dir"
-  cmake -S "$root_dir" -B "$build_dir" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+  cmake -S "$root_dir" -B "$build_dir" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DEGGC_BUILD_BENCHMARKS=ON
 
   printf 'Running clang-tidy...\n'
-  absolute_cpp_files=("${cpp_files[@]/#/${root_dir}/}")
+  # The consumer fixture is compiled by its separate installed-package project.
+  # Use the parent compilation database rather than passing unconfigured sources.
+  mapfile -t absolute_cpp_files < <(python3 - "$build_dir/compile_commands.json" <<'PYDB'
+import json, sys
+from pathlib import Path
+commands = json.loads(Path(sys.argv[1]).read_text())
+print("\n".join(sorted({str(Path(c["directory"], c["file"]).resolve()) for c in commands})))
+PYDB
+  )
   clang-tidy -p "$build_dir" --warnings-as-errors='*' "${absolute_cpp_files[@]}"
 fi

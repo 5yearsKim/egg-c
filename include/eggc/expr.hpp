@@ -8,11 +8,11 @@
 namespace eggc {
 // A bottom-up DAG of application nodes. Here child IDs index earlier entries;
 // in an EGraph the same node type instead refers to e-classes.
-template <Language L> struct RecExpr {
+template <Language L>
+struct RecExpr {
   std::vector<L> nodes;
   Id root() const {
-    if (nodes.empty())
-      throw std::logic_error("empty expression has no root");
+    if (nodes.empty()) throw std::logic_error("empty expression has no root");
     return static_cast<Id>(nodes.size() - 1);
   }
   Id add(L node) {
@@ -26,4 +26,4 @@ template <Language L> struct RecExpr {
     return id;
   }
 };
-} // namespace eggc
+}  // namespace eggc

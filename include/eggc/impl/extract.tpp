@@ -38,7 +38,24 @@ template <Language L, class A, class Cost>
   requires AnalysisFor<A, L>
 Extractor<L, A, Cost>::Extractor(const EGraph<L, A>& graph,
                                  CostPolicy<L, Cost> cost)
-    : graph_(&graph), revision_(graph.revision()) {
+    : Extractor(graph, std::move(cost), std::nullopt) {}
+
+template <Language L, class A, class Cost>
+  requires AnalysisFor<A, L>
+Extractor<L, A, Cost>::Extractor(const EGraph<L, A>& graph,
+                                 std::vector<Id> roots,
+                                 CostPolicy<L, Cost> cost)
+    : Extractor(graph, std::move(cost),
+                std::optional<std::vector<Id>>(std::move(roots))) {}
+
+template <Language L, class A, class Cost>
+  requires AnalysisFor<A, L>
+Extractor<L, A, Cost>::Extractor(const EGraph<L, A>& graph,
+                                 CostPolicy<L, Cost> cost,
+                                 std::optional<std::vector<Id>> roots)
+    : graph_(&graph),
+      revision_(graph.revision()),
+      restricted_(roots.has_value()) {
   graph.require_clean();
   if (!cost) {
     if constexpr (std::same_as<Cost, std::size_t>)
@@ -48,28 +65,43 @@ Extractor<L, A, Cost>::Extractor(const EGraph<L, A>& graph,
           "extractor requires a cost policy for this cost type");
   }
 
-  const auto ids = graph.classes();
-  const std::size_t slots = graph.node_count() == 0
-                                ? 0
-                                : static_cast<std::size_t>(*std::max_element(
-                                      ids.begin(), ids.end())) +
-                                      1;
+  std::vector<Id> ids;
+  if (restricted_) {
+    const auto add = [&](Id raw) {
+      const auto id = graph.find(raw);
+      if (selected_slots_.emplace(id, ids.size()).second) ids.push_back(id);
+    };
+    for (Id root : *roots) add(root);
+    for (std::size_t i = 0; i < ids.size(); ++i)
+      for (const auto& node : graph.nodes(ids[i]))
+        for (Id child : node.children()) add(child);
+  } else
+    ids = graph.classes();
+  stats_.classes = ids.size();
+  const auto slots =
+      restricted_ ? ids.size()
+                  : (ids.empty() ? 0
+                                 : static_cast<std::size_t>(*std::max_element(
+                                       ids.begin(), ids.end())) +
+                                       1);
   choices_.resize(slots);
 
   std::deque<Id> pending(ids.begin(), ids.end());
   std::vector<unsigned char> queued(slots, 0);
-  for (Id id : ids) queued[id] = 1;
+  for (Id id : ids) queued[slot(id)] = 1;
   std::vector<Cost> child_costs;
   while (!pending.empty()) {
     const Id id = pending.front();
     pending.pop_front();
-    queued[id] = 0;
+    const auto index = slot(id);
+    queued[index] = 0;
     bool improved = false;
     for (const auto& node : graph.nodes(id)) {
+      ++stats_.evaluated_nodes;
       child_costs.clear();
       bool finite = true;
       for (Id child_id : node.children()) {
-        const Id child = graph.find(child_id);
+        const auto child = slot(graph.find(child_id));
         if (!choices_[child]) {
           finite = false;
           break;
@@ -87,18 +119,32 @@ Extractor<L, A, Cost>::Extractor(const EGraph<L, A>& graph,
         if (!(child < *candidate))
           throw std::invalid_argument(
               "cost policy must return a cost greater than every child");
-      if (!choices_[id] || *candidate < choices_[id]->cost) {
-        choices_[id] = Choice{*candidate, node};
+      if (!choices_[index] || *candidate < choices_[index]->cost) {
+        choices_[index] = Choice{*candidate, node};
+        ++stats_.improvements;
         improved = true;
       }
     }
     if (improved)
-      for (Id parent : graph.parent_classes(id))
-        if (!queued[parent]) {
-          queued[parent] = 1;
+      graph.for_each_parent_use(id, [&](Id parent) {
+        if (restricted_ && !selected_slots_.contains(parent)) return;
+        const auto index = slot(parent);
+        if (!queued[index]) {
+          queued[index] = 1;
           pending.push_back(parent);
         }
+      });
   }
+}
+
+template <Language L, class A, class Cost>
+  requires AnalysisFor<A, L>
+std::size_t Extractor<L, A, Cost>::slot(Id id) const {
+  if (!restricted_) return static_cast<std::size_t>(id);
+  auto found = selected_slots_.find(id);
+  if (found == selected_slots_.end())
+    throw std::out_of_range("e-class outside extraction roots");
+  return found->second;
 }
 
 template <Language L, class A, class Cost>
@@ -115,9 +161,10 @@ const typename Extractor<L, A, Cost>::Choice& Extractor<L, A, Cost>::choice(
     Id root) const {
   check_graph();
   root = graph_->find(root);
-  if (root >= choices_.size() || !choices_[root])
+  const auto index = slot(root);
+  if (index >= choices_.size() || !choices_[index])
     throw std::runtime_error("no finite expression represented by e-class");
-  return *choices_[root];
+  return *choices_[index];
 }
 
 template <Language L, class A, class Cost>

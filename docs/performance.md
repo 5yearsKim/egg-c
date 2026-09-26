@@ -118,11 +118,54 @@ remain the same. These are operation counts, not a comparison of Debug and
 Release timings. Regression tests enforce bounded work on isolated updates and
 compare randomized propagation with an independent fixed-point oracle.
 
-Only affected node/class views are rebuilt. The contiguous candidate list for
-an affected operator is still refreshed from its membership set; an operator
-with many unrelated classes can therefore require copying that list. Persistent
-arena and union-find storage also retain retired handles. Extraction still
-initializes costs across all live classes, then propagates only improvements.
+Only affected node/class views and operator memberships are rebuilt. Candidate
+vectors are now materialized lazily by the first query for each changed
+operator. This defers copying; a query for an operator with many classes still
+copies that operator's candidate list once. Use `prepare_indexes()` to warm
+these caches before sharing the graph with concurrent readers.
+
+Arena and union-find storage retain historical handles. `memory_stats()` makes
+retained storage visible. Extraction without roots initializes all live
+classes; the root-vector constructor restricts it to reachable alternatives.
+Parent-use callbacks avoid rebuilding temporary parent-class sets.
+
+## Allocation and resource diagnostics
+
+```sh
+/tmp/eggc-perf/benchmarks/advanced_benchmark all 2000 3
+```
+
+The optional `advanced_benchmark` provides three deterministic workloads:
+
+| Workload | Measured work |
+| --- | --- |
+| `matching_reuse` | Match `(pair ?x ?x)` once per class with a warmed workspace |
+| `wide_dag` | Explore one state of a class containing many alternatives |
+| `same_operator_update` | Rebuild after merging leaves whose parents share an operator with unrelated classes |
+
+It records matches, cost calls, allocation requests, requested bytes,
+materialized candidate IDs, and elapsed nanoseconds. Allocation interception is
+benchmark-only and single-threaded; it reports requests in the measured window,
+not peak or resident memory. Setup, workspace warmup, and invariant checks are
+outside that window. The smoke test checks all three workloads at size 8.
+
+Comparing the same benchmark source at size 2,000 before and after this pass,
+compiled with Clang and `-std=c++20 -O2`, produced these deterministic counts:
+
+| Work | Before | After |
+| --- | ---: | ---: |
+| Matcher allocation requests for 2,000 matches | 14,000 | 0 |
+| Matcher requested bytes in the warmed search loop | 400,000 | 0 |
+| DAG cost evaluations with `state_limit = 1` | 2,000 | 1 |
+| DAG allocation requests | 10,014 | 8 |
+| DAG requested bytes | 872,368 | 596 |
+
+Zero allocations applies to this fixed pattern and one-result-per-class
+workload after warmup. Larger results or patterns can grow buffers. A
+same-operator update now materializes zero candidate IDs during rebuilding;
+requesting that operator's index performs the deferred copy. The baseline had
+no candidate-copy counter; its CSV marks that field `unavailable` when built
+with `EGGC_REVIEW_BASELINE`. Timing samples are diagnostic, not CI thresholds.
 
 See [advanced features](advanced_features.md) for the new matching, extraction,
 hook, provenance, and packaging APIs and their limits.

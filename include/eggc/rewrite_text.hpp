@@ -13,18 +13,18 @@ namespace eggc {
 // String-based rule construction. The engine's Rewrite type is in rewrite.hpp.
 namespace rewrite_text_detail {
 template <ParseableLanguage L>
-Pattern<L> rule_pattern(const std::string &name, std::string_view side,
+Pattern<L> rule_pattern(const std::string& name, std::string_view side,
                         std::string_view text) {
   try {
     return parse_pattern<L>(text);
-  } catch (const ParseError &error) {
+  } catch (const ParseError& error) {
     // Retain the structured source location, adding the rule and side context.
-    throw ParseError(text, error.offset(),
-                     "rule \"" + name + "\", " + std::string(side) + ": " +
-                         error.message());
+    throw ParseError(
+        text, error.offset(),
+        "rule \"" + name + "\", " + std::string(side) + ": " + error.message());
   }
 }
-} // namespace rewrite_text_detail
+}  // namespace rewrite_text_detail
 
 // Parse and validate once, before the rule is used by a runner.
 template <ParseableLanguage L = SymbolLang, class A = NoAnalysis<L>>
@@ -38,10 +38,10 @@ Rewrite<L, A> rewrite(std::string name, std::string_view lhs,
                      std::move(condition)};
   try {
     validate_rewrite(rule);
-  } catch (const std::invalid_argument &error) {
+  } catch (const std::invalid_argument& error) {
     std::string side = "condition";
     const auto bound = rule.lhs->variables();
-    for (const auto &variable : rule.rhs->variables())
+    for (const auto& variable : rule.rhs->variables())
       if (std::find(bound.begin(), bound.end(), variable) == bound.end())
         side = "RHS";
     throw std::invalid_argument("rule \"" + name + "\", " + side + ": " +
@@ -59,4 +59,4 @@ Rewrite<L, A> rewrite(std::string name, std::string_view lhs,
   return rewrite<L, A>(std::move(name), lhs, rhs,
                        std::optional<Condition<L, A>>{std::move(condition)});
 }
-} // namespace eggc
+}  // namespace eggc

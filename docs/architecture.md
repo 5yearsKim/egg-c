@@ -9,7 +9,8 @@ implementations, so applications do not include files from `impl/`.
 | Header | What it provides |
 | --- | --- |
 | `all.hpp` | Complete library; use this to get started |
-| `core.hpp` | Generic e-graph engine for any application language |
+| `engine.hpp` | Minimal generic engine for application languages |
+| `core.hpp` | Compatibility umbrella with optional graph tools |
 | `text.hpp` | Symbol language, parsing, printing, and textual rewrites |
 
 The engine uses node values and patterns. The optional text API converts strings
@@ -53,7 +54,7 @@ engine independently of the text API.
 Each directory owns its CMake and Bazel targets. Root build files expose the
 header-only library and connect those targets.
 
-`benchmarks/` contains six deterministic workloads. Enable it with
+`benchmarks/` contains engine workloads and allocation/resource diagnostics. Enable it with
 `EGGC_BUILD_BENCHMARKS=ON` in CMake or build its Bazel targets directly. CI checks
 GCC, Clang, address/undefined-behavior sanitizers, and the Bazel build. See
 [performance and diagnostics](performance.md) for commands and counters.
@@ -65,7 +66,21 @@ put syntax changes in the text files above. Add a focused regression test under
 
 The graph's persistent node arena, parent-use lists, and work queues are in
 `egraph.hpp`/`impl/egraph.tpp`. Clean class views retain the original public node
-API. `impl/matcher.hpp` implements the numeric matching machine used by public
+API. `impl/matcher.tpp` implements the numeric matching machine used by public
 patterns and the runner. Extraction policies propagate costs through the graph's
 parent dependencies. See [advanced features](advanced_features.md) for contracts
 and limitations.
+
+Internal union-find and proof-forest responsibilities live in `detail/`.
+Replacement construction is a linear program separate from matching.
+`CompiledRules` shares immutable compiled programs; `Runner` owns per-execution
+buffers, scheduling state, hooks, and history. `impl/dag_extract.tpp` and
+`impl/multipattern.tpp` keep algorithm bodies out of public declarations.
+The independent reference matcher lives only in `tests/support/`.
+
+Pattern representation/validation in `pattern_types.hpp` is independent of the
+matching engine. `matcher.hpp` and `replacement.hpp` declare their respective
+programs and include implementations without a header cycle. `pattern.hpp`
+retains the original matching/instantiation convenience functions.
+`proof_check.hpp` exposes optional equation replay implemented in
+`impl/proof_check.tpp`.

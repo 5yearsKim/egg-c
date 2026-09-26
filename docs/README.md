@@ -9,3 +9,6 @@ symbol language and requires no custom node code.
 - [Advanced features](advanced_features.md): persistent rebuilding, hooks, DAGs, joins, and packages.
 - [Performance and diagnostics](performance.md): benchmarks, rebuild counters, and rule statistics.
 - [Examples](../examples/): runnable programs, checked by CMake and Bazel tests.
+
+The [reusable runner example](../examples/reusable_runner.cpp) demonstrates the
+execution and verification APIs introduced by the cleanup pass.

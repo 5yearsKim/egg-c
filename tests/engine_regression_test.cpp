@@ -12,14 +12,14 @@ using Graph = eggc::EGraph<Node>;
 using Pattern = eggc::Pattern<Node>;
 using Rule = eggc::Rewrite<Node>;
 
-void check(bool value, const char *message) {
-  if (!value)
-    throw std::runtime_error(message);
+void check(bool value, const char* message) {
+  if (!value) throw std::runtime_error(message);
 }
-template <class F> void invalid(F fn) {
+template <class F>
+void invalid(F fn) {
   try {
     fn();
-  } catch (const std::invalid_argument &) {
+  } catch (const std::invalid_argument&) {
     return;
   }
   throw std::runtime_error("expected invalid_argument");
@@ -28,17 +28,15 @@ template <class F> void invalid(F fn) {
 struct BooleanFacts {
   using Data = bool;
   std::shared_ptr<std::size_t> evaluations;
-  Data make(const eggc::EGraph<Node, BooleanFacts> &graph,
-            const Node &node) const {
+  Data make(const eggc::EGraph<Node, BooleanFacts>& graph,
+            const Node& node) const {
     ++*evaluations;
     bool result = node.op == "known";
-    for (auto child : node.args)
-      result = result || graph.analysis_data(child);
+    for (auto child : node.args) result = result || graph.analysis_data(child);
     return result;
   }
-  eggc::AnalysisMerge merge(Data &into, const Data &from) const {
-    if (into || !from)
-      return eggc::AnalysisMerge::Unchanged;
+  eggc::AnalysisMerge merge(Data& into, const Data& from) const {
+    if (into || !from) return eggc::AnalysisMerge::Unchanged;
     into = true;
     return eggc::AnalysisMerge::Changed;
   }
@@ -46,8 +44,8 @@ struct BooleanFacts {
 using BooleanGraph = eggc::EGraph<Node, BooleanFacts>;
 static_assert(eggc::AnalysisFor<BooleanFacts, Node>);
 static_assert(std::is_same_v<
-              decltype(std::declval<const BooleanGraph &>().analysis_data(0)),
-              const bool &>);
+              decltype(std::declval<const BooleanGraph&>().analysis_data(0)),
+              const bool&>);
 
 void boolean_data_and_cycles() {
   auto calls = std::make_shared<std::size_t>(0);
@@ -56,13 +54,13 @@ void boolean_data_and_cycles() {
   auto b = graph.add(Node::leaf("b"));
   auto known = graph.add(Node::leaf("known"));
   auto parent = graph.add(Node::node("f", {a, a}));
-  graph.merge(a, b); // Raise a's rank before merging into it from known.
+  graph.merge(a, b);  // Raise a's rank before merging into it from known.
   const auto facts_before = graph.analysis_revision();
   graph.merge(known, a);
   check(graph.analysis_data(a), "root swap lost Boolean facts");
   check(graph.analysis_revision() == facts_before + 1,
         "root swap did not record the survivor's changed facts");
-  graph.merge(a, parent); // A self-cycle with repeated child references.
+  graph.merge(a, parent);  // A self-cycle with repeated child references.
   graph.rebuild();
   check(graph.analysis_data(parent), "cyclic propagation lost known fact");
   check(graph.is_clean(), "cyclic rebuild did not complete");
@@ -145,7 +143,7 @@ void backoff_and_diagnostics() {
   options.per_rule_match_limit = 1;
   options.collect_rule_stats = true;
   auto report = eggc::run(graph, rules, options);
-  const auto &stats = report.history.front();
+  const auto& stats = report.history.front();
   check(stats.backed_off_rules == 1 && stats.applications == 2,
         "backoff did not discard only the offending rule");
   check(graph.node_count() == 4 && graph.classes_for_op("f").empty(),
@@ -169,10 +167,10 @@ void backoff_and_diagnostics() {
         "disabled diagnostics allocated rule stats");
 
   // A custom searcher receives identical backoff behavior.
-  Rule custom{"custom", [a](const Graph &snapshot, const Rule::Sink &emit,
-                            const eggc::StopCheck &) {
+  Rule custom{"custom", [a](const Graph& snapshot, const Rule::Sink& emit,
+                            const eggc::StopCheck&) {
                 for (auto id : snapshot.classes()) {
-                  if (!emit({id, [a](Graph &target) -> std::optional<eggc::Id> {
+                  if (!emit({id, [a](Graph& target) -> std::optional<eggc::Id> {
                                return target.add(Node::node("custom", {a}));
                              }}))
                     return false;
@@ -192,9 +190,9 @@ void backoff_and_diagnostics() {
   options.iteration_limit = 10;
   auto retried = eggc::run(
       retry, std::vector{eggc::rewrite("identity", "?x", "?x")}, options);
-  check(retried.reason == eggc::StopReason::Saturated &&
-            retried.iterations == 2,
-        "backoff incorrectly reported saturation before retry");
+  check(
+      retried.reason == eggc::StopReason::Saturated && retried.iterations == 2,
+      "backoff incorrectly reported saturation before retry");
 }
 
 void limit_and_condition_diagnostics() {
@@ -203,7 +201,7 @@ void limit_and_condition_diagnostics() {
   graph.add(Node::leaf("b"));
   auto guarded = eggc::rewrite("reject", "?x", "?x");
   guarded.condition = eggc::Condition<Node>{
-      "false", {"?x"}, [](const Graph &, eggc::Id, const eggc::Substitution &) {
+      "false", {"?x"}, [](const Graph&, eggc::Id, const eggc::Substitution&) {
         return false;
       }};
   eggc::RunOptions options;
@@ -232,23 +230,20 @@ void limit_and_condition_diagnostics() {
         "rejected conditions did not consume backoff budget");
 }
 
-unsigned literal_fact(const Node &node) {
-  if (node.op.size() == 2 && node.op[0] == 'k')
-    return 1u << (node.op[1] - '0');
+unsigned literal_fact(const Node& node) {
+  if (node.op.size() == 2 && node.op[0] == 'k') return 1u << (node.op[1] - '0');
   return 0;
 }
 struct Bits {
   using Data = unsigned;
-  Data make(const eggc::EGraph<Node, Bits> &graph, const Node &node) const {
+  Data make(const eggc::EGraph<Node, Bits>& graph, const Node& node) const {
     auto result = literal_fact(node);
-    for (auto child : node.args)
-      result |= graph.analysis_data(child);
+    for (auto child : node.args) result |= graph.analysis_data(child);
     return result;
   }
-  eggc::AnalysisMerge merge(Data &into, const Data &from) const {
+  eggc::AnalysisMerge merge(Data& into, const Data& from) const {
     auto result = into | from;
-    if (result == into)
-      return eggc::AnalysisMerge::Unchanged;
+    if (result == into) return eggc::AnalysisMerge::Unchanged;
     into = result;
     return eggc::AnalysisMerge::Changed;
   }
@@ -274,8 +269,7 @@ void randomized_analysis_oracle() {
                 static_cast<eggc::Id>(rng() % terms.size()));
         }
         terms.push_back(original);
-        for (auto &child : original.args)
-          child = ids[child];
+        for (auto& child : original.args) child = ids[child];
         ids.push_back(graph.add(std::move(original)));
       }
       for (int i = 0; i < 5; ++i)
@@ -289,7 +283,7 @@ void randomized_analysis_oracle() {
           auto inferred = literal_fact(terms[i]);
           for (auto child : terms[i].args)
             inferred |= expected[graph.find(ids[child])];
-          auto &fact = expected[graph.find(ids[i])];
+          auto& fact = expected[graph.find(ids[i])];
           if ((fact | inferred) != fact) {
             fact |= inferred;
             changed = true;
@@ -302,7 +296,7 @@ void randomized_analysis_oracle() {
     }
   }
 }
-} // namespace
+}  // namespace
 
 int main() {
   try {
@@ -313,7 +307,7 @@ int main() {
     limit_and_condition_diagnostics();
     randomized_analysis_oracle();
     std::cout << "Engine correctness and incremental analysis checks passed\n";
-  } catch (const std::exception &error) {
+  } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';
     return 1;
   }

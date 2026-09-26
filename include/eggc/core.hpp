@@ -1,15 +1,7 @@
 #pragma once
-// Generic engine for application-defined node types and analyses.
-#include "analysis.hpp"
-#include "egraph.hpp"
-#include "expr.hpp"
-#include "extract.hpp"
-#include "id.hpp"
-#include "language.hpp"
-#include "pattern.hpp"
-#include "rewrite.hpp"
-#include "runner.hpp"
-
+// Compatibility umbrella: generic engine and optional graph tools.
 #include "dag_extract.hpp"
 #include "dot.hpp"
+#include "engine.hpp"
 #include "multipattern.hpp"
+#include "proof_check.hpp"
