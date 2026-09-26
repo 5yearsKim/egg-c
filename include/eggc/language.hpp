@@ -11,7 +11,7 @@
 
 namespace eggc {
 template <class T>
-concept Hashable = requires(const T &value) {
+concept Hashable = requires(const T& value) {
   { std::hash<T>{}(value) } -> std::convertible_to<std::size_t>;
 };
 
@@ -29,15 +29,15 @@ concept ChildRange =
 template <class R>
 concept ConstChildren =
     ChildRange<R> &&
-    std::same_as<std::ranges::range_reference_t<R>, const Id &> &&
+    std::same_as<std::ranges::range_reference_t<R>, const Id&> &&
     requires(R children, std::size_t index) {
-      { children[index] } -> std::same_as<const Id &>;
+      { children[index] } -> std::same_as<const Id&>;
     };
 template <class R>
 concept MutableChildren =
-    ChildRange<R> && std::same_as<std::ranges::range_reference_t<R>, Id &> &&
+    ChildRange<R> && std::same_as<std::ranges::range_reference_t<R>, Id&> &&
     requires(R children, std::size_t index) {
-      { children[index] } -> std::same_as<Id &>;
+      { children[index] } -> std::same_as<Id&>;
     };
 
 // L is the application's complete node type. These constraints check its API;
@@ -47,7 +47,7 @@ concept MutableChildren =
 template <class L>
 concept Language =
     std::copyable<L> && std::equality_comparable<L> &&
-    requires(const L &node, const L &other, L &mutable_node) {
+    requires(const L& node, const L& other, L& mutable_node) {
       typename L::Discriminant;
       requires std::copyable<typename L::Discriminant>;
       requires std::equality_comparable<typename L::Discriminant>;
@@ -59,10 +59,11 @@ concept Language =
       { node.hash() } -> std::same_as<std::size_t>;
     };
 
-template <Language L> struct NodeHash {
-  std::size_t operator()(const L &node) const { return node.hash(); }
+template <Language L>
+struct NodeHash {
+  std::size_t operator()(const L& node) const { return node.hash(); }
 };
-inline void hash_combine(std::size_t &seed, std::size_t value) {
+inline void hash_combine(std::size_t& seed, std::size_t value) {
   seed ^= value + 0x9e3779b9u + (seed << 6) + (seed >> 2);
 }
-} // namespace eggc
+}  // namespace eggc

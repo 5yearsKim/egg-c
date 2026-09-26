@@ -13,15 +13,11 @@ const typename A::Data& EGraph<L, A>::analysis_data(Id id) const {
 }
 template <Language L, class A>
 Id EGraph<L, A>::find(Id id) {
-  if (id >= parent_.size()) throw std::out_of_range("invalid e-class id");
-  if (parent_[id] != id) parent_[id] = find(parent_[id]);
-  return parent_[id];
+  return unions_.find(id);
 }
 template <Language L, class A>
 Id EGraph<L, A>::find(Id id) const {
-  if (id >= parent_.size()) throw std::out_of_range("invalid e-class id");
-  while (parent_[id] != id) id = parent_[id];
-  return id;
+  return unions_.find(id);
 }
 template <Language L, class A>
 void EGraph<L, A>::enqueue_repair(NodeId id) {
@@ -52,13 +48,13 @@ Id EGraph<L, A>::add(L node) {
   for (Id& child : node.children_mut()) child = find(child);
   if (auto it = memo_.find(node); it != memo_.end())
     return find(arena_[it->second].owner);
-  if (parent_.size() >= invalid_id)
+  if (unions_.size() >= invalid_id)
     throw std::overflow_error("too many e-classes");
   Data data = analysis_.make(*this, node);
-  const Id id = static_cast<Id>(parent_.size());
+  const Id id = static_cast<Id>(unions_.size());
   const NodeId nid = arena_.size();
-  parent_.push_back(id);
-  rank_.push_back(0);
+  if (explanations_) original_terms_.push_back(node);
+  unions_.add();
   members_.push_back({nid});
   uses_.emplace_back();
   classes_.emplace_back();
@@ -99,7 +95,9 @@ template <Language L, class A>
 bool EGraph<L, A>::merge(Id lhs, Id rhs, Justification justification) {
   Id a = find(lhs), b = find(rhs);
   if (a == b) return false;
-  if (rank_[a] < rank_[b]) std::swap(a, b);
+  auto ordered = unions_.order(a, b);
+  a = ordered.first;
+  b = ordered.second;
   Data data = analysis_data_[a].value;
   auto result = analysis_.merge(data, analysis_data_[b].value);
   if (result == AnalysisMerge::Conflict)
@@ -109,11 +107,10 @@ bool EGraph<L, A>::merge(Id lhs, Id rhs, Justification justification) {
       justification.kind = UnionKind::Analysis;
       if (justification.name == "user") justification.name = "analysis";
     }
-    proof_.push_back({lhs, rhs, std::move(justification)});
+    proof_.add({lhs, rhs, std::move(justification)}, unions_.size());
   }
   analysis_data_[a].value = std::move(data);
-  parent_[b] = a;
-  if (rank_[a] == rank_[b]) ++rank_[a];
+  unions_.link(a, b);
   members_[a].insert(members_[a].end(), members_[b].begin(), members_[b].end());
   members_[b].clear();
   uses_[a].insert(uses_[b].begin(), uses_[b].end());
@@ -190,13 +187,12 @@ void EGraph<L, A>::analyze(NodeId nid) {
 }
 template <Language L, class A>
 void EGraph<L, A>::refresh_views() {
-  std::unordered_set<typename L::Discriminant> changed_ops;
   // Remove all old memberships before adding new ones, since a root can move.
   for (Id id : dirty_classes_)
     for (const auto& node : classes_[id]) {
       auto op = node.discriminant();
       op_classes_[op].erase(id);
-      changed_ops.insert(std::move(op));
+      dirty_ops_.insert(std::move(op));
     }
   for (Id id : dirty_classes_) {
     ++rebuild_stats_.refreshed_classes;
@@ -209,12 +205,8 @@ void EGraph<L, A>::refresh_views() {
       classes_[id].push_back(arena_[nid].node);
       auto op = arena_[nid].node.discriminant();
       op_classes_[op].insert(id);
-      changed_ops.insert(std::move(op));
+      dirty_ops_.insert(std::move(op));
     }
-  }
-  for (const auto& op : changed_ops) {
-    const auto& ids = op_classes_.at(op);
-    op_index_[op].assign(ids.begin(), ids.end());
   }
   dirty_classes_.clear();
 }
@@ -298,6 +290,14 @@ const std::vector<Id>& EGraph<L, A>::classes_for_op(
     const typename L::Discriminant& op) const {
   require_clean();
   static const std::vector<Id> empty;
+  if (dirty_ops_.contains(op)) {
+    const auto& members = op_classes_.at(op);
+    auto& cached = op_index_[op];
+    cached.assign(members.begin(), members.end());
+    dirty_ops_.erase(op);
+    ++index_stats_.materializations;
+    index_stats_.copied_candidate_ids += cached.size();
+  }
   const auto it = op_index_.find(op);
   return it == op_index_.end() ? empty : it->second;
 }
@@ -378,6 +378,10 @@ void EGraph<L, A>::check_invariants() const {
       if (std::find(children.begin(), children.end(), id) == children.end())
         throw std::logic_error("spurious parent dependency");
     }
+  for (const auto& [op, members] : op_classes_) {
+    (void)members;
+    classes_for_op(op);
+  }
   for (const auto& [op, cached] : op_index_) {
     const auto found = op_classes_.find(op);
     if (found == op_classes_.end() ||
@@ -394,7 +398,7 @@ void EGraph<L, A>::check_invariants() const {
 }
 template <Language L, class A>
 void EGraph<L, A>::enable_explanations() {
-  if (!parent_.empty())
+  if (!unions_.empty())
     throw std::logic_error("enable explanations before adding terms");
   explanations_ = true;
 }
@@ -404,35 +408,47 @@ std::vector<ProofStep> EGraph<L, A>::explain_equivalence(Id lhs, Id rhs) const {
   if (!explanations_) throw std::logic_error("explanations are disabled");
   if (find(lhs) != find(rhs))
     throw std::invalid_argument("terms are not equivalent");
-  if (lhs == rhs) return {};
-  std::vector<std::vector<std::pair<Id, std::size_t>>> edges(parent_.size());
-  for (std::size_t i = 0; i < proof_.size(); ++i) {
-    edges[proof_[i].lhs].push_back({proof_[i].rhs, i});
-    edges[proof_[i].rhs].push_back({proof_[i].lhs, i});
+  return proof_.path(lhs, rhs, unions_.size());
+}
+template <Language L, class A>
+MemoryStats EGraph<L, A>::memory_stats() const {
+  MemoryStats result{live_nodes_, arena_.size() - live_nodes_, arena_.size(),
+                     unions_.size(), sizeof(*this)};
+  auto& bytes = result.estimated_bytes;
+  bytes += unions_.storage_bytes() + proof_.storage_bytes() +
+           original_terms_.capacity() * sizeof(L);
+  bytes += arena_.capacity() * sizeof(NodeRecord) +
+           analysis_data_.capacity() * sizeof(AnalysisSlot);
+  bytes += members_.capacity() * sizeof(std::vector<NodeId>) +
+           classes_.capacity() * sizeof(std::vector<L>);
+  bytes += uses_.capacity() * sizeof(std::unordered_set<NodeId>) +
+           modify_queued_.capacity();
+  for (const auto& members : members_)
+    bytes += members.capacity() * sizeof(NodeId);
+  for (const auto& nodes : classes_) bytes += nodes.capacity() * sizeof(L);
+  for (const auto& uses : uses_)
+    bytes += uses.bucket_count() * sizeof(void*) +
+             uses.size() * (sizeof(NodeId) + 2 * sizeof(void*));
+  bytes += memo_.bucket_count() * sizeof(void*) +
+           memo_.size() * (sizeof(L) + sizeof(NodeId) + 2 * sizeof(void*));
+  bytes += (live_ids_.size() + dirty_classes_.size()) *
+           (sizeof(Id) + 3 * sizeof(void*));
+  for (const auto& [op, ids] : op_classes_) {
+    (void)op;
+    bytes += sizeof(op) + ids.size() * (sizeof(Id) + 3 * sizeof(void*));
   }
-  std::vector<Id> previous(parent_.size(), invalid_id);
-  std::vector<std::size_t> steps(parent_.size());
-  std::deque<Id> queue{lhs};
-  previous[lhs] = lhs;
-  while (!queue.empty() && previous[rhs] == invalid_id) {
-    auto id = queue.front();
-    queue.pop_front();
-    for (auto [next, step] : edges[id])
-      if (previous[next] == invalid_id) {
-        previous[next] = id;
-        steps[next] = step;
-        queue.push_back(next);
-      }
+  for (const auto& [op, ids] : op_index_) {
+    (void)op;
+    bytes += sizeof(op) + ids.capacity() * sizeof(Id);
   }
-  if (previous[rhs] == invalid_id)
-    throw std::logic_error("incomplete equality provenance");
-  std::vector<ProofStep> result;
-  for (Id id = rhs; id != lhs; id = previous[id]) {
-    auto step = proof_[steps[id]];
-    if (step.lhs != previous[id]) std::swap(step.lhs, step.rhs);
-    result.push_back(std::move(step));
-  }
-  std::reverse(result.begin(), result.end());
+  bytes += (op_classes_.bucket_count() + op_index_.bucket_count() +
+            dirty_ops_.bucket_count()) *
+           sizeof(void*);
+  bytes += dirty_ops_.size() *
+           (sizeof(typename L::Discriminant) + 2 * sizeof(void*));
+  bytes +=
+      (repair_pending_.size() + analysis_pending_.size()) * sizeof(NodeId) +
+      modify_pending_.size() * sizeof(Id);
   return result;
 }
 }  // namespace eggc

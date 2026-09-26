@@ -1,44 +1,46 @@
 #include "eggc/printer.hpp"
-#include "eggc/symbol_lang.hpp"
 
 #include <iostream>
 #include <stdexcept>
+
+#include "eggc/symbol_lang.hpp"
 
 namespace test {
 // A print-only language: no parser adapter is needed to inspect its graph.
 struct Label : eggc::SymbolLang {};
 struct Analysis {
   using Data = std::monostate;
-  Data make(const eggc::EGraph<Label, Analysis> &, const Label &) const {
+  Data make(const eggc::EGraph<Label, Analysis>&, const Label&) const {
     return {};
   }
-  eggc::AnalysisMerge merge(Data &, const Data &) const {
+  eggc::AnalysisMerge merge(Data&, const Data&) const {
     return eggc::AnalysisMerge::Unchanged;
   }
 };
-} // namespace test
+}  // namespace test
 namespace eggc {
-template <> struct LanguageIO<test::Label> {
-  static std::string format_op(const test::Label &node) {
+template <>
+struct LanguageIO<test::Label> {
+  static std::string format_op(const test::Label& node) {
     return "custom:" + node.op;
   }
 };
-} // namespace eggc
+}  // namespace eggc
 
 namespace {
-void check(bool value, const char *message) {
-  if (!value)
-    throw std::runtime_error(message);
+void check(bool value, const char* message) {
+  if (!value) throw std::runtime_error(message);
 }
-template <class F> void requires_rebuild(F fn) {
+template <class F>
+void requires_rebuild(F fn) {
   try {
     fn();
-  } catch (const std::logic_error &) {
+  } catch (const std::logic_error&) {
     return;
   }
   throw std::runtime_error("printed a dirty graph");
 }
-} // namespace
+}  // namespace
 
 int main() {
   try {
@@ -90,11 +92,11 @@ int main() {
     auto value = custom.add(test::Label{Node::leaf("42")});
     custom.add(test::Label{Node::node("neg", {value})});
     custom.rebuild();
-    check(eggc::to_string(custom) ==
-              "e0:\n  custom:42\ne1:\n  (custom:neg e0)\n",
-          "custom node formatter and analysis");
+    check(
+        eggc::to_string(custom) == "e0:\n  custom:42\ne1:\n  (custom:neg e0)\n",
+        "custom node formatter and analysis");
     std::cout << "Printer checks passed\n";
-  } catch (const std::exception &error) {
+  } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';
     return 1;
   }

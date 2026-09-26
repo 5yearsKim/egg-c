@@ -5,10 +5,10 @@ load("@rules_cc//cc:cc_test.bzl", "cc_test")
     name = example,
     srcs = [example + ".cpp"],
     deps = ["//%s:eggc" % "/".join(package_name().split("/")[:-1])],
-) for example in ["tutorial_getting_started", "custom_language", "conditional_rewrite", "advanced_features"]]
+) for example in ["tutorial_getting_started", "custom_language", "conditional_rewrite", "advanced_features", "reusable_runner"]]
 
 [cc_test(
     name = example + "_test",
     srcs = [example + ".cpp"],
     deps = ["//%s:eggc" % "/".join(package_name().split("/")[:-1])],
-) for example in ["tutorial_getting_started", "custom_language", "conditional_rewrite", "advanced_features"]]
+) for example in ["tutorial_getting_started", "custom_language", "conditional_rewrite", "advanced_features", "reusable_runner"]]

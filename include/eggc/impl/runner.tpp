@@ -24,7 +24,13 @@ template <Language L, class A>
   requires AnalysisFor<A, L>
 struct PendingApplication {
   std::variant<Application<L, A>, PatternApplication> action;
-  std::size_t rule_index;
+  std::size_t rule_index = 0;
+  PendingApplication() = default;
+  template <class Action>
+  PendingApplication(Action&& value, std::size_t index)
+      : action(std::in_place_type<std::remove_cvref_t<Action>>,
+               std::forward<Action>(value)),
+        rule_index(index) {}
 };
 
 template <Language L, class A>
@@ -46,6 +52,7 @@ SearchResult<L, A> search_iteration(
     const EGraph<L, A>& graph, const std::vector<Rewrite<L, A>>& rules,
     const std::vector<std::optional<CompiledPattern<L>>>& compiled_lhs,
     const RunOptions& options, std::vector<std::size_t>& rule_budgets,
+    std::vector<MatcherWorkspace>& workspaces,
     const std::function<bool()>& timed_out) {
   SearchResult<L, A> result;
   if (options.collect_rule_stats) {
@@ -85,7 +92,7 @@ SearchResult<L, A> search_iteration(
           if (!action.apply)
             throw std::invalid_argument("empty rewrite application");
         }
-        result.pending.push_back({std::move(action), rule_index});
+        result.pending.emplace_back(std::move(action), rule_index);
       }
       return true;
     };
@@ -107,12 +114,14 @@ SearchResult<L, A> search_iteration(
           timed_out);
     } else {
       const auto* root_node = std::get_if<L>(&rule.lhs->nodes.back());
-      const auto candidates =
+      std::vector<Id> all_classes;
+      if (!root_node) all_classes = graph.classes();
+      const auto& candidates =
           root_node ? graph.classes_for_op(root_node->discriminant())
-                    : graph.classes();
+                    : all_classes;
       for (Id id : candidates) {
         completed = compiled_lhs[rule_index]->search(
-            graph, id,
+            graph, id, workspaces[rule_index],
             [&](const std::vector<Id>& bindings) {
               // Check budgets before invoking potentially expensive conditions.
               bool allowed = true;
@@ -169,9 +178,10 @@ template <Language L, class A>
   requires AnalysisFor<A, L>
 std::optional<StopReason> apply_matches(
     EGraph<L, A>& graph, const std::vector<PendingApplication<L, A>>& pending,
-    const std::vector<std::optional<CompiledPattern<L>>>& compiled_rhs,
+    const std::vector<std::optional<CompiledReplacement<L>>>& compiled_rhs,
     const std::vector<Rewrite<L, A>>& rules, const RunOptions& options,
-    IterationStats& stats, const std::function<bool()>& timed_out) {
+    IterationStats& stats, std::vector<Id>& scratch,
+    const std::function<bool()>& timed_out) {
   for (const auto& item : pending) {
     if (timed_out()) return StopReason::TimeLimit;
     const auto apply_start =
@@ -182,8 +192,8 @@ std::optional<StopReason> apply_matches(
         [&](const auto& action) -> std::optional<Id> {
           if constexpr (std::same_as<std::decay_t<decltype(action)>,
                                      PatternApplication>)
-            return compiled_rhs[item.rule_index]->instantiate(graph,
-                                                              action.bindings);
+            return compiled_rhs[item.rule_index]->instantiate(
+                graph, action.bindings, scratch);
           else
             return action.apply(graph);
         },
@@ -203,6 +213,9 @@ std::optional<StopReason> apply_matches(
       rule.apply_time += Clock::now() - apply_start;
     }
     if (graph.node_count() >= options.node_limit) return StopReason::NodeLimit;
+    if (options.memory_limit_bytes &&
+        graph.memory_stats().estimated_bytes >= *options.memory_limit_bytes)
+      return StopReason::MemoryLimit;
   }
   return std::nullopt;
 }
@@ -210,161 +223,163 @@ std::optional<StopReason> apply_matches(
 
 template <Language L, class A>
   requires AnalysisFor<A, L>
-RunReport run(EGraph<L, A>& graph, const std::vector<Rewrite<L, A>>& rules,
-              const RunOptions& options,
-              const std::vector<IterationHook<L, A>>& hooks) {
-  // Patterns and callbacks are snapshotted for the lifetime of this run.
-  const auto frozen_rules = rules;
-  const auto frozen_hooks = hooks;
-  for (const auto& hook : frozen_hooks)
-    if (!hook) throw std::invalid_argument("empty iteration hook");
-  runner_detail::validate_rules(frozen_rules);
-  std::vector<std::optional<CompiledPattern<L>>> compiled_lhs, compiled_rhs;
-  compiled_lhs.reserve(frozen_rules.size());
-  compiled_rhs.reserve(frozen_rules.size());
-  for (const auto& rule : frozen_rules) {
+CompiledRules<L, A>::CompiledRules(std::vector<Rewrite<L, A>> rules) {
+  auto program = std::make_shared<Program>();
+  program->rules = std::move(rules);
+  runner_detail::validate_rules(program->rules);
+  for (const auto& rule : program->rules) {
     if (rule.custom_search) {
-      compiled_lhs.emplace_back();
-      compiled_rhs.emplace_back();
+      program->lhs.emplace_back();
+      program->rhs.emplace_back();
     } else {
-      compiled_lhs.emplace_back(std::in_place, *rule.lhs);
-      compiled_rhs.emplace_back(std::in_place, *rule.rhs,
-                                compiled_lhs.back()->variables());
+      program->lhs.emplace_back(std::in_place, *rule.lhs);
+      program->rhs.emplace_back(std::in_place, *rule.rhs,
+                                program->lhs.back()->variables());
     }
   }
+  program_ = std::move(program);
+}
+
+template <Language L, class A>
+  requires AnalysisFor<A, L>
+Runner<L, A>::Runner(EGraph<L, A>& graph, CompiledRules<L, A> rules,
+                     std::vector<IterationHook<L, A>> hooks)
+    : graph_(&graph),
+      compiled_(std::move(rules)),
+      hooks_(std::move(hooks)),
+      matcher_workspaces_(compiled_.rules().size()) {
+  for (const auto& hook : hooks_)
+    if (!hook) throw std::invalid_argument("empty iteration hook");
+}
+
+template <Language L, class A>
+  requires AnalysisFor<A, L>
+const RunReport& Runner<L, A>::resume(const RunOptions& options) {
+  if (running_) throw std::logic_error("runner cannot resume recursively");
+  struct Guard {
+    bool& running;
+    explicit Guard(bool& value) : running(value) { running = true; }
+    ~Guard() { running = false; }
+  } guard(running_);
   if (options.per_rule_match_limit && *options.per_rule_match_limit == 0)
     throw std::invalid_argument("per-rule match limit must be positive");
+  if (rule_budgets_.empty() ||
+      initial_rule_budget_ != options.per_rule_match_limit) {
+    initial_rule_budget_ = options.per_rule_match_limit;
+    rule_budgets_.assign(compiled_.rules().size(),
+                         options.per_rule_match_limit.value_or(0));
+  }
+  auto& graph = *graph_;
+  auto& report = report_;
   const auto start = runner_detail::Clock::now();
   const auto timed_out = [&] {
     return options.time_limit &&
            runner_detail::Clock::now() - start >= *options.time_limit;
   };
-
+  const auto limit = [&]() -> std::optional<StopReason> {
+    if (timed_out()) return StopReason::TimeLimit;
+    if (graph.node_count() >= options.node_limit) return StopReason::NodeLimit;
+    if (options.memory_limit_bytes &&
+        graph.memory_stats().estimated_bytes >= *options.memory_limit_bytes)
+      return StopReason::MemoryLimit;
+    return {};
+  };
   std::optional<StopReason> rebuild_stop;
   const auto rebuild_graph = [&] {
-    return graph.rebuild([&] {
-      if (timed_out()) {
-        rebuild_stop = StopReason::TimeLimit;
-        return true;
-      }
-      if (graph.node_count() >= options.node_limit) {
-        rebuild_stop = StopReason::NodeLimit;
-        return true;
-      }
-      return false;
+    graph.rebuild([&] {
+      auto why = limit();
+      if (why) rebuild_stop = why;
+      return why.has_value();
     });
   };
   rebuild_graph();
-  RunReport report;
-  report.initial_rebuild = graph.last_rebuild_stats();
+  if (report.preparation_rebuilds.empty())
+    report.initial_rebuild = graph.last_rebuild_stats();
+  report.preparation_rebuilds.push_back(graph.last_rebuild_stats());
   report.nodes = graph.node_count();
-  if (rebuild_stop) {
-    report.reason = *rebuild_stop;
+  if (auto why = rebuild_stop ? rebuild_stop : limit()) {
+    report.reason = *why;
     return report;
   }
-  if (timed_out()) {
-    report.reason = StopReason::TimeLimit;
-    return report;
-  }
-  if (report.nodes >= options.node_limit) {
-    report.reason = StopReason::NodeLimit;
-    return report;
-  }
-
-  std::vector<std::size_t> rule_budgets(
-      frozen_rules.size(), options.per_rule_match_limit.value_or(0));
   for (std::size_t iteration = 0; iteration < options.iteration_limit;
        ++iteration) {
     ++report.iterations;
     IterationStats stats;
-    const std::uint64_t revision_before = graph.revision();
-    const std::uint64_t analysis_revision_before = graph.analysis_revision();
-    const auto hook_start = runner_detail::Clock::now();
-    for (const auto& hook : frozen_hooks) {
-      if (!hook) throw std::invalid_argument("empty iteration hook");
-      const bool proceed = hook(graph, report);
+    const auto revision_before = graph.revision();
+    const auto analysis_before = graph.analysis_revision();
+    const auto finish = [&](StopReason reason,
+                            bool completed = false) -> const RunReport& {
+      stats.analysis_changes =
+          static_cast<std::size_t>(graph.analysis_revision() - analysis_before);
+      stats.nodes = report.nodes = graph.node_count();
+      stats.classes = graph.class_count();
+      stats.completed = completed;
+      report.reason = reason;
+      report.history.push_back(std::move(stats));
+      return report;
+    };
+    const auto repair = [&] {
+      const auto begin = runner_detail::Clock::now();
       rebuild_graph();
-      stats.analysis_evaluations +=
-          graph.last_rebuild_stats().analysis_evaluations;
-      if (!proceed || rebuild_stop || timed_out() ||
-          graph.node_count() >= options.node_limit) {
-        report.reason =
-            !proceed
-                ? StopReason::UserRequested
-                : rebuild_stop.value_or(timed_out() ? StopReason::TimeLimit
-                                                    : StopReason::NodeLimit);
-        stats.hook_time = runner_detail::Clock::now() - hook_start;
-        stats.nodes = report.nodes = graph.node_count();
-        stats.classes = graph.class_count();
-        report.history.push_back(std::move(stats));
-        return report;
-      }
+      stats.rebuild_time += runner_detail::Clock::now() - begin;
+      const auto& rebuild = graph.last_rebuild_stats();
+      stats.analysis_evaluations += rebuild.analysis_evaluations;
+      stats.rebuild_unions +=
+          rebuild.congruence_unions + rebuild.analysis_unions;
+    };
+    for (const auto& hook : hooks_) {
+      const auto begin = runner_detail::Clock::now();
+      const bool proceed = hook(graph, report);
+      stats.hook_time += runner_detail::Clock::now() - begin;
+      repair();
+      if (!proceed) return finish(StopReason::UserRequested);
+      if (auto why = rebuild_stop ? rebuild_stop : limit()) return finish(*why);
     }
-    stats.hook_time = runner_detail::Clock::now() - hook_start;
     const auto search_start = runner_detail::Clock::now();
     auto search = runner_detail::search_iteration(
-        graph, frozen_rules, compiled_lhs, options, rule_budgets, timed_out);
+        graph, compiled_.rules(), compiled_.searchers(), options, rule_budgets_,
+        matcher_workspaces_, timed_out);
     stats.search_time = runner_detail::Clock::now() - search_start;
     stats.matches = search.matches;
     stats.condition_checks = search.condition_checks;
     stats.condition_rejections = search.condition_rejections;
     stats.backed_off_rules = search.backed_off_rules;
     stats.rules = std::move(search.rules);
-    if (search.stop) {
-      report.reason = *search.stop;
-      stats.nodes = graph.node_count();
-      stats.classes = graph.class_count();
-      report.nodes = stats.nodes;
-      report.history.push_back(std::move(stats));
-      return report;
-    }
-
+    if (search.stop) return finish(*search.stop);
     const auto apply_start = runner_detail::Clock::now();
-    const auto apply_stop =
-        runner_detail::apply_matches(graph, search.pending, compiled_rhs,
-                                     frozen_rules, options, stats, timed_out);
+    auto apply_stop = runner_detail::apply_matches(
+        graph, search.pending, compiled_.replacements(), compiled_.rules(),
+        options, stats, replacement_scratch_, timed_out);
     stats.apply_time = runner_detail::Clock::now() - apply_start;
-
-    const auto rebuild_start = runner_detail::Clock::now();
-    rebuild_graph();
-    stats.analysis_evaluations +=
-        graph.last_rebuild_stats().analysis_evaluations;
-    stats.rebuild_time = runner_detail::Clock::now() - rebuild_start;
-    const std::size_t classes_after_rebuild = graph.class_count();
-    stats.rebuild_unions = graph.last_rebuild_stats().congruence_unions +
-                           graph.last_rebuild_stats().analysis_unions;
-    stats.analysis_changes = static_cast<std::size_t>(
-        graph.analysis_revision() - analysis_revision_before);
-    stats.nodes = graph.node_count();
-    stats.classes = classes_after_rebuild;
-    stats.completed = !apply_stop;
-    report.nodes = stats.nodes;
-    report.history.push_back(std::move(stats));
-
-    if (rebuild_stop) {
-      report.reason = *rebuild_stop;
-      return report;
-    }
-    if (apply_stop == StopReason::NodeLimit ||
-        report.nodes >= options.node_limit) {
-      report.reason = StopReason::NodeLimit;
-      return report;
-    }
-    if (apply_stop == StopReason::TimeLimit || timed_out()) {
-      report.reason = StopReason::TimeLimit;
-      return report;
-    }
-    if (graph.revision() == revision_before && !search.any_backoff) {
-      report.reason = StopReason::Saturated;
-      return report;
-    }
+    repair();
+    if (rebuild_stop) return finish(*rebuild_stop);
+    if (apply_stop) return finish(*apply_stop);
+    if (auto why = limit()) return finish(*why);
+    const bool saturated =
+        graph.revision() == revision_before && !search.any_backoff;
+    finish(saturated ? StopReason::Saturated : StopReason::IterationLimit,
+           true);
+    if (saturated) return report;
   }
-
   report.reason = StopReason::IterationLimit;
-  report.nodes = graph.node_count();
   return report;
 }
 
+template <Language L, class A>
+  requires AnalysisFor<A, L>
+RunReport run(EGraph<L, A>& graph, const CompiledRules<L, A>& rules,
+              const RunOptions& options,
+              const std::vector<IterationHook<L, A>>& hooks) {
+  Runner<L, A> runner(graph, rules, hooks);
+  return runner.resume(options);
+}
+template <Language L, class A>
+  requires AnalysisFor<A, L>
+RunReport run(EGraph<L, A>& graph, const std::vector<Rewrite<L, A>>& rules,
+              const RunOptions& options,
+              const std::vector<IterationHook<L, A>>& hooks) {
+  return run(graph, CompiledRules<L, A>(rules), options, hooks);
+}
 template <Language L, class A>
   requires AnalysisFor<A, L>
 RunReport run(EGraph<L, A>& graph, const std::vector<Rewrite<L, A>>& rules,

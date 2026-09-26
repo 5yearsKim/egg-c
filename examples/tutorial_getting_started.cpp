@@ -7,9 +7,8 @@
 
 namespace {
 using Node = eggc::SymbolLang;
-void check(bool condition, const char *message) {
-  if (!condition)
-    throw std::runtime_error(message);
+void check(bool condition, const char* message) {
+  if (!condition) throw std::runtime_error(message);
 }
 
 void expressions_and_matching() {
@@ -61,7 +60,7 @@ void optimize(std::string_view input, std::string_view expected) {
   std::cout << eggc::to_string(start) << " -> " << eggc::to_string(best)
             << " (cost " << cost << ")\n";
 }
-} // namespace
+}  // namespace
 
 int main() {
   try {
@@ -69,7 +68,7 @@ int main() {
     optimize("(+ 0 (* 1 a))", "a");
     optimize("(* 0 a)", "0");
     optimize("(+ (* a 1) 0)", "a");
-  } catch (const std::exception &error) {
+  } catch (const std::exception& error) {
     std::cerr << "Getting-started example failed: " << error.what() << '\n';
     return 1;
   }

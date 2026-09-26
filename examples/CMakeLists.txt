@@ -1,4 +1,4 @@
-foreach(example_name tutorial_getting_started custom_language conditional_rewrite advanced_features)
+foreach(example_name tutorial_getting_started custom_language conditional_rewrite advanced_features reusable_runner)
   add_executable(${example_name} ${example_name}.cpp)
   target_link_libraries(${example_name} PRIVATE eggc)
   set_target_properties(${example_name} PROPERTIES CXX_EXTENSIONS OFF)

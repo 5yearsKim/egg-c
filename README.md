@@ -80,3 +80,7 @@ engine, or `eggc/text.hpp` for symbols and text-based rules. Individual public
 headers also work. Template definitions live in `impl/` and are included
 automatically; ship that directory with the headers. The library remains
 header-only, with no `src/` directory.
+
+Use `eggc/engine.hpp` for the minimal generic engine; `core.hpp` and `all.hpp`
+remain compatibility umbrellas. The [reusable runner example](examples/reusable_runner.cpp)
+shows compiled rule reuse, execution slices, scoped extraction, and rewrite replay.

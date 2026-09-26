@@ -24,32 +24,31 @@ struct Calc {
   std::span<eggc::Id> children_mut() {
     return {operands.data(), kind == Kind::Add ? 2u : 0u};
   }
-  bool matches(const Calc &other) const {
+  bool matches(const Calc& other) const {
     return kind == other.kind && value == other.value;
   }
-  bool operator==(const Calc &) const = default;
+  bool operator==(const Calc&) const = default;
   std::size_t hash() const {
     std::size_t h = std::hash<int>{}(value);
     eggc::hash_combine(h, static_cast<std::size_t>(kind));
-    for (auto child : children())
-      eggc::hash_combine(h, child);
+    for (auto child : children()) eggc::hash_combine(h, child);
     return h;
   }
 };
 struct NoText : eggc::SymbolLang {};
 struct ParseOnly : eggc::SymbolLang {};
 struct PrintOnly : eggc::SymbolLang {};
-} // namespace test
+}  // namespace test
 namespace eggc {
-template <> struct LanguageIO<test::Calc> {
+template <>
+struct LanguageIO<test::Calc> {
   static test::Calc from_op(std::string_view op, std::vector<Id> children) {
     if (op == "+") {
       if (children.size() != 2)
         throw std::invalid_argument("+ requires two operands");
       return test::Calc(children[0], children[1]);
     }
-    if (!children.empty())
-      throw std::invalid_argument("unknown operator");
+    if (!children.empty()) throw std::invalid_argument("unknown operator");
     int value;
     auto [end, error] =
         std::from_chars(op.data(), op.data() + op.size(), value);
@@ -57,30 +56,32 @@ template <> struct LanguageIO<test::Calc> {
       throw std::invalid_argument("invalid integer literal");
     return test::Calc(value);
   }
-  static std::string format_op(const test::Calc &node) {
+  static std::string format_op(const test::Calc& node) {
     return node.kind == test::Calc::Kind::Add ? "+"
                                               : std::to_string(node.value);
   }
 };
-template <> struct LanguageIO<test::ParseOnly> {
+template <>
+struct LanguageIO<test::ParseOnly> {
   static test::ParseOnly from_op(std::string_view op,
                                  std::vector<Id> children) {
     return {SymbolLang::node(std::string(op), std::move(children))};
   }
 };
-template <> struct LanguageIO<test::PrintOnly> {
-  static std::string format_op(const test::PrintOnly &node) { return node.op; }
+template <>
+struct LanguageIO<test::PrintOnly> {
+  static std::string format_op(const test::PrintOnly& node) { return node.op; }
 };
-} // namespace eggc
+}  // namespace eggc
 namespace {
-void check(bool value, const char *message) {
-  if (!value)
-    throw std::runtime_error(message);
+void check(bool value, const char* message) {
+  if (!value) throw std::runtime_error(message);
 }
-template <class F> eggc::ParseError fails(F fn) {
+template <class F>
+eggc::ParseError fails(F fn) {
   try {
     fn();
-  } catch (const eggc::ParseError &error) {
+  } catch (const eggc::ParseError& error) {
     return error;
   }
   throw std::runtime_error("expected ParseError");
@@ -94,7 +95,7 @@ static_assert(eggc::ParseableLanguage<test::ParseOnly> &&
               !eggc::PrintableLanguage<test::ParseOnly>);
 static_assert(!eggc::ParseableLanguage<test::PrintOnly> &&
               eggc::PrintableLanguage<test::PrintOnly>);
-} // namespace
+}  // namespace
 int main() {
   try {
     for (const std::string text :
@@ -122,7 +123,7 @@ int main() {
       eggc::to_string(eggc::Pattern<eggc::SymbolLang>::var("two words"));
       throw std::runtime_error(
           "printed a variable name that cannot round-trip");
-    } catch (const std::invalid_argument &) {
+    } catch (const std::invalid_argument&) {
     }
     eggc::EGraph<test::NoText> no_text;
     no_text.add(test::NoText{eggc::SymbolLang::leaf("a")});
@@ -177,7 +178,7 @@ int main() {
     check(eggc::to_string(eggc::parse_pattern<test::Calc>("(+ ?x 0)")) ==
               "(+ ?x 0)",
           "typed pattern");
-    for (const auto *text :
+    for (const auto* text :
          {"(+ 1)", "(+ 1 2 3)", "(* 1 2)", "abc", "99999999999999999999"})
       fails([&] { eggc::parse_expr<test::Calc>(text); });
     auto typed_error = fails([] { eggc::parse_expr<test::Calc>("\n (+ 1)"); });
@@ -186,8 +187,7 @@ int main() {
 
     // Deep input proves parsing and printing do not rely on the call stack.
     std::string deep;
-    for (int i = 0; i < 10000; ++i)
-      deep += "(f ";
+    for (int i = 0; i < 10000; ++i) deep += "(f ";
     deep += "a";
     deep.append(10000, ')');
     check(eggc::to_string(eggc::parse_expr(deep)) == deep, "deep nesting");
@@ -195,10 +195,10 @@ int main() {
     try {
       eggc::to_string(invalid);
       throw std::runtime_error("accepted cyclic expression");
-    } catch (const std::invalid_argument &) {
+    } catch (const std::invalid_argument&) {
     }
     std::cout << "Parser checks passed\n";
-  } catch (const std::exception &error) {
+  } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';
     return 1;
   }

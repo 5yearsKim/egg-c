@@ -2,8 +2,8 @@ load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
 [cc_test(
     name = source[:-4],
-    srcs = [source],
+    srcs = [source] + glob(["support/*.hpp"]),
     # Resolve the parent package in both standalone and embedded workspaces.
     deps = ["//%s:eggc" % "/".join(package_name().split("/")[:-1])],
     visibility = ["//visibility:public"],
-) for source in ["language_test.cpp", "concepts_test.cpp", "symbol_lang_test.cpp", "parser_test.cpp", "printer_test.cpp", "rewrite_text_test.cpp", "engine_regression_test.cpp", "advanced_engine_test.cpp"]]
+) for source in ["language_test.cpp", "concepts_test.cpp", "symbol_lang_test.cpp", "parser_test.cpp", "printer_test.cpp", "rewrite_text_test.cpp", "engine_regression_test.cpp", "analysis_hooks_test.cpp", "provenance_hooks_test.cpp", "extraction_test.cpp", "dag_extraction_test.cpp", "multipattern_dot_test.cpp", "compiled_matcher_test.cpp", "runtime_test.cpp"]]

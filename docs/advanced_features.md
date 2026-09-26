@@ -1,6 +1,7 @@
 # Advanced engine features
 
-The [advanced example](../examples/advanced_features.cpp) demonstrates DAG
+The [advanced example](../examples/advanced_features.cpp) and
+[reusable runner example](../examples/reusable_runner.cpp) demonstrates DAG
 extraction, joined patterns, lookup, and equality provenance:
 
 ```sh
@@ -13,8 +14,10 @@ The graph stores nodes in an arena with stable internal handles. E-class IDs
 remain valid after unions; use `find()` to canonicalize them. Parent-use lists
 and separate congruence, analysis, and modification queues persist across
 rebuilds. A union schedules parents from both classes. Duplicate canonical
-nodes are retired, and only affected class views and operator indexes are
-refreshed.
+nodes are retired, and only affected class views and operator memberships are
+refreshed. Candidate vectors are materialized lazily by `classes_for_op()` and
+reused until their operator changes. `index_stats()` reports materializations
+and copied IDs; `reset_index_stats()` starts a new measurement window.
 
 `nodes(id)` still returns `const std::vector<L>&`. Its views are cached for clean
 queries. References returned by node, analysis, or index queries may be
@@ -56,7 +59,7 @@ void modify(Graph& graph, eggc::Id id) {
 
 The analysis's `make()` must infer arithmetic using operand facts and checked
 arithmetic; `SymbolLang` itself has no built-in arithmetic semantics. The
-[advanced regression test](../tests/advanced_engine_test.cpp) supplies a complete
+[advanced regression test](../tests/analysis_hooks_test.cpp) supplies a complete
 checked constant-folding analysis and optimizes `(+ (+ 2 3) 4)` to `9`.
 
 Runner limits also apply between modification hooks. One callback may exceed
@@ -90,7 +93,7 @@ pattern.search(graph, root, [&](const std::vector<eggc::Id>& bindings) {
 Variables have integer slots in `pattern.variables()` order. Matching uses
 registers, an undo trail, explicit backtracking, and binding-vector deduplication.
 More structured children are searched first. The runner compiles rules once
-per invocation, freezes rules and hooks, and stores ordinary pending
+per invocation (or reuses `CompiledRules`), freezes rules and hooks, and stores ordinary pending
 applications as rule index, target, and numeric bindings. String substitutions
 are constructed for conditions and public callbacks that request them. Custom
 searchers retain their existing callback API.
@@ -153,8 +156,12 @@ cycle rejection. This is a dependency-free exact branch-and-bound search for
 small graphs, not an ILP backend. Worst-case work is exponential. State and
 optional time budgets return an incumbent marked non-optimal, or no cost if no
 finite candidate was found. Exhaustion with no finite DAG throws. A budget limits
-explored states, not total frontier allocation; one expansion/cost callback can
-exceed a time budget. This interface leaves room for a solver backend later.
+explored states. Alternatives are expanded one at a time, and `frontier_limit`
+bounds the number of retained search frames. `reason` identifies exhaustion,
+state, time, or frontier limits; `peak_frontier` records the largest stack.
+Frame state copies can still grow with depth; the frontier limit is not a byte
+limit. A single cost callback may exceed a cooperative time budget. This
+interface leaves room for a solver backend later.
 
 For `(f x x x)` equivalent to `(g (g x))`, tree extraction chooses the latter
 at cost 3. DAG extraction chooses `(f x x x)` at cost 2 because `x` is shared.
@@ -175,9 +182,10 @@ auto rule = eggc::multi_rewrite<Node>(
 ```
 
 Only combinations satisfying both clauses and all shared-variable equalities
-are emitted. The search orders clauses by candidate count, seeds existing
+are emitted. The search caches candidate counts, orders clauses by selectivity, and seeds existing
 bindings into compiled matching, deduplicates complete substitutions, and
-honors cancellation. `multi_rewrite` validates its target/RHS variables and
+honors cancellation. Explicit join frames and matcher cursors avoid recursive
+clause traversal and materializing all intermediate results. `multi_rewrite` validates its target/RHS variables and
 replaces one bound root. For applications that modify several roots, use the
 existing custom searcher/application API. Joining many large candidate sets can
 still be expensive; use runner match/time limits.
@@ -222,9 +230,21 @@ auto steps = graph.explain_equivalence(a, b);
 The returned steps form a directed union path between the original handles.
 Congruence premises can be explained separately through the same API. This is
 optional equality provenance for debugging: user equations, rewrite semantics,
-and analysis facts are trusted. It is not a semantic proof checker or a replay
-of rewrite substitutions. Non-equivalent endpoints and explanations enabled
-late are rejected.
+and analysis facts are trusted by this path API. Non-equivalent endpoints and
+explanations enabled late are rejected.
+
+`verify_explanations(validator)` independently replays the union forest, checks
+that recorded premises were already established, and requires the validator
+to accept each equation. `verify_rewrites(graph, rules)` from `proof_check.hpp`
+reconstructs original node snapshots in a fresh graph and checks named
+unconditional pattern rewrites by matching their LHS and looking up their RHS.
+Congruence is checked structurally. A third callback argument may explicitly
+accept user assumptions, analysis equations, guarded rewrites, or custom
+applications. Without that acceptance these equations fail verification.
+Verification establishes derivability under the supplied rewrite rules and
+accepted assumptions; the application remains responsible for their semantics.
+When explanations are enabled, original node snapshots are retained for replay.
+Verification does not mutate the source graph.
 
 `to_dot(graph)` produces Graphviz text using `LanguageIO<L>::format_op` and
 escapes labels. Custom languages can use `to_dot(graph, formatter)` without a
@@ -250,3 +270,85 @@ The exported target supplies C++20 and the installed include directory. All
 public headers and their implementation headers are installed. The package
 consumer CTest verifies installation, discovery, compilation, and execution in
 a separate project. Bazel consumers retain the header-only library target.
+
+## Reusing programs and resuming execution
+
+```cpp
+using Node = eggc::SymbolLang;
+eggc::CompiledRules<Node> compiled({eggc::rewrite("zero", "(+ ?x 0)", "?x")});
+eggc::Runner<Node> runner(graph, compiled);
+eggc::RunOptions slice;
+slice.iteration_limit = 2;
+runner.resume(slice);
+runner.resume(slice); // Up to two additional iterations, a fresh time budget.
+const auto& cumulative = runner.report();
+```
+
+`CompiledRules` owns a shared immutable rule snapshot and compiles it once.
+`run(graph, compiled, options)` reuses it on another graph. A `Runner` retains
+compiled programs, matcher/replacement buffers, backoff budgets, hooks, and
+cumulative history. `iteration_limit` and `time_limit` apply to each `resume()`;
+node/memory limits apply to the current graph. Changing the initial per-rule
+budget resets scheduling budgets. Raising limits resumes suspended analysis
+hooks. Partially applied iterations are rebuilt and searched afresh; pending
+applications from their old search are discarded. `preparation_rebuilds`
+records rebuilding at the start of every resume, while `initial_rebuild` retains
+the first one. Hooks see the cumulative iteration count. Recursive resume is
+rejected. The graph must outlive the runner; callback exceptions propagate,
+with earlier mutations preserved.
+
+`CompiledReplacement<Node>` is a linear bottom-up program for construction or
+bound lookup. It preserves RHS DAG sharing and has no matcher instruction cap.
+The searcher's 100,000-instruction cap applies only to matcher compilation.
+
+For repeated direct matching, pass one `MatcherWorkspace` to
+`pattern.search(graph, root, workspace, callback)`. Its numeric registers,
+lookup stamps, binding trail, frames, and flat deduplication buffers retain
+capacity. One workspace may serve different completed searches. Nested or
+concurrent searches need separate workspaces. `start()`/`next()` expose a cursor
+returning `Match`, `Done`, or `Cancelled`; cancellation terminates that cursor,
+and `start()` restarts it. Graph/program changes invalidate an active cursor.
+
+## Extraction from selected roots
+
+```cpp
+eggc::Extractor<Node> selected(graph, std::vector<eggc::Id>{root});
+auto best = selected.find_best(root);
+```
+
+This computes costs only for classes reachable through all alternatives of the
+selected roots. It uses compact storage even when e-class IDs are sparse.
+An empty root vector evaluates nothing. Querying a class outside that closure
+throws. The existing constructor without roots still evaluates all classes.
+`stats()` reports evaluated classes/nodes and cost improvements.
+
+## Storage accounting and cache preparation
+
+`memory_stats()` reports live/retired/allocated arena nodes, e-class slots, and
+estimated graph-owned storage. `RunOptions::memory_limit_bytes` adds a
+cooperative `MemoryLimit` stop reason. This estimate includes reserved vector
+capacity and approximate container overhead, not allocator metadata or dynamic
+allocations inside application node/analysis values. It is not a process-memory
+or exact heap limit. Checking it scans retained graph storage, so leave the
+optional budget unset when that accounting cost is undesirable. One callback
+may exceed the budget before returning; structural/analysis repair finishes so
+the stopped graph remains queryable. Historical IDs, retired arena records,
+and replay snapshots remain retained. Compaction would need to preserve or
+explicitly remap those handles and is not automatic.
+
+Lazy operator cache population mutates internal caches during const queries.
+Call `prepare_indexes()` after rebuilding and before concurrent read-only
+queries; keep the graph unchanged while readers are active. Shared compiled
+programs require separate graphs/workspaces and thread-safe user callbacks.
+
+## Structure and checks
+
+`engine.hpp` provides the minimal engine. `core.hpp` and `all.hpp` retain their
+existing umbrella APIs. Optional DAG, multi-pattern, visualization, and replay
+features have separate public headers. Implementations live in `impl/*.tpp`;
+union-find, proof-forest, and flat binding storage live in `detail/`.
+
+Behavioral suites under `tests/` share basic helpers in `tests/support/`.
+The independent recursive matcher is test-only. `./lint.sh --check` covers
+headers, implementation files, examples, tests, and benchmarks using the
+repository's `.clang-format`; CI enforces the same formatting.

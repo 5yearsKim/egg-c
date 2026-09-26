@@ -1,5 +1,6 @@
 #pragma once
 #include <chrono>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -15,7 +16,8 @@ enum class StopReason {
   MatchLimit,
   // A custom search exhausted its own bounded search budget.
   SearchLimit,
-  UserRequested
+  UserRequested,
+  MemoryLimit
 };
 struct RunOptions {
   std::size_t iteration_limit = 10;
@@ -33,6 +35,9 @@ struct RunOptions {
   // Populate IterationStats::rules. Disabled by default to avoid per-rule
   // allocations and clock readings. Duplicate names remain distinct by index.
   bool collect_rule_stats = false;
+  // Cooperative limit on graph-accounted storage; excludes allocations owned by
+  // L/Data.
+  std::optional<std::size_t> memory_limit_bytes;
 };
 struct RuleStats {
   std::size_t rule_index = 0;
@@ -77,9 +82,66 @@ struct RunReport {
   std::size_t nodes = 0;
   std::vector<IterationStats> history;
   RebuildStats initial_rebuild;
+  std::vector<RebuildStats> preparation_rebuilds;
 };
 template <Language L, class A = NoAnalysis<L>>
-using IterationHook = std::function<bool(EGraph<L, A> &, const RunReport &)>;
+using IterationHook = std::function<bool(EGraph<L, A>&, const RunReport&)>;
+// Immutable shared program; safe to reuse with separate graphs/workspaces.
+template <Language L, class A = NoAnalysis<L>>
+  requires AnalysisFor<A, L>
+class CompiledRules {
+ public:
+  explicit CompiledRules(std::vector<Rewrite<L, A>> rules);
+  const std::vector<Rewrite<L, A>>& rules() const { return program_->rules; }
+  const std::vector<std::optional<CompiledPattern<L>>>& searchers() const {
+    return program_->lhs;
+  }
+  const std::vector<std::optional<CompiledReplacement<L>>>& replacements()
+      const {
+    return program_->rhs;
+  }
+
+ private:
+  struct Program {
+    std::vector<Rewrite<L, A>> rules;
+    std::vector<std::optional<CompiledPattern<L>>> lhs;
+    std::vector<std::optional<CompiledReplacement<L>>> rhs;
+  };
+  std::shared_ptr<const Program> program_;
+};
+// resume() allows iteration_limit additional iterations and a fresh time
+// budget. Partial iterations are rebuilt, then searched afresh on the next
+// resume.
+template <Language L, class A = NoAnalysis<L>>
+  requires AnalysisFor<A, L>
+class Runner {
+ public:
+  Runner(EGraph<L, A>& graph, CompiledRules<L, A> rules,
+         std::vector<IterationHook<L, A>> hooks = {});
+  Runner(const Runner&) = delete;
+  Runner& operator=(const Runner&) = delete;
+  Runner(Runner&&) = delete;
+  Runner& operator=(Runner&&) = delete;
+  const RunReport& resume(const RunOptions& options = {});
+  const RunReport& report() const noexcept { return report_; }
+
+ private:
+  EGraph<L, A>* graph_;
+  CompiledRules<L, A> compiled_;
+  std::vector<IterationHook<L, A>> hooks_;
+  RunReport report_;
+  std::vector<std::size_t> rule_budgets_;
+  std::optional<std::size_t> initial_rule_budget_;
+  std::vector<MatcherWorkspace> matcher_workspaces_;
+  std::vector<Id> replacement_scratch_;
+  bool running_ = false;
+};
+
+template <Language L, class A>
+  requires AnalysisFor<A, L>
+RunReport run(EGraph<L, A>& graph, const CompiledRules<L, A>& rules,
+              const RunOptions& options = {},
+              const std::vector<IterationHook<L, A>>& hooks = {});
 // Hooks run before each iteration on a clean graph. Return false to stop.
 // The runner rebuilds after each hook, including a hook that requests stop.
 // Validates all rules, rebuilds the input, and searches only clean graph
@@ -89,12 +151,12 @@ using IterationHook = std::function<bool(EGraph<L, A> &, const RunReport &)>;
 // applications.
 template <Language L, class A>
   requires AnalysisFor<A, L>
-RunReport run(EGraph<L, A> &graph, const std::vector<Rewrite<L, A>> &rules,
-              const RunOptions &options,
-              const std::vector<IterationHook<L, A>> &hooks = {});
+RunReport run(EGraph<L, A>& graph, const std::vector<Rewrite<L, A>>& rules,
+              const RunOptions& options,
+              const std::vector<IterationHook<L, A>>& hooks = {});
 template <Language L, class A>
   requires AnalysisFor<A, L>
-RunReport run(EGraph<L, A> &graph, const std::vector<Rewrite<L, A>> &rules,
+RunReport run(EGraph<L, A>& graph, const std::vector<Rewrite<L, A>>& rules,
               std::size_t iteration_limit = 10, std::size_t node_limit = 10000);
-} // namespace eggc
+}  // namespace eggc
 #include "impl/runner.tpp"

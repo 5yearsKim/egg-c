@@ -7,13 +7,12 @@
 
 namespace {
 void check(bool condition) {
-  if (!condition)
-    throw std::runtime_error("symbol language check failed");
+  if (!condition) throw std::runtime_error("symbol language check failed");
 }
 static_assert(eggc::Language<eggc::SymbolLang>);
 static_assert(eggc::ParseableLanguage<eggc::SymbolLang>);
 static_assert(eggc::PrintableLanguage<eggc::SymbolLang>);
-} // namespace
+}  // namespace
 int main() {
   try {
     using Node = eggc::SymbolLang;
@@ -35,7 +34,7 @@ int main() {
     graph.rebuild();
     check(graph.find(x) == graph.find(y));
     std::cout << "SymbolLang checks passed\n";
-  } catch (const std::exception &error) {
+  } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';
     return 1;
   }

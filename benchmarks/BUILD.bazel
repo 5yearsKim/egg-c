@@ -13,3 +13,15 @@ cc_test(
     args = ["all", "8", "1"],
     deps = ["//%s:eggc" % "/".join(package_name().split("/")[:-1])],
 )
+
+cc_binary(
+    name = "advanced_benchmark",
+    srcs = ["advanced_benchmark.cpp"],
+    deps = ["//%s:eggc" % "/".join(package_name().split("/")[:-1])],
+)
+cc_test(
+    name = "advanced_benchmark_smoke",
+    srcs = ["advanced_benchmark.cpp"],
+    args = ["all", "8", "1"],
+    deps = ["//%s:eggc" % "/".join(package_name().split("/")[:-1])],
+)

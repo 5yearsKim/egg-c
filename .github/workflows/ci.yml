@@ -9,6 +9,15 @@ permissions:
   contents: read
 
 jobs:
+  format:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install formatter
+        run: sudo apt-get update && sudo apt-get install -y clang-format ripgrep
+      - name: Check formatting
+        run: ./lint.sh --check
+
   cmake:
     runs-on: ubuntu-24.04
     strategy:
