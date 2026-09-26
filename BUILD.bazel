@@ -2,8 +2,7 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 cc_library(
     name = "eggc",
-    srcs = glob(["src/*.cpp"]),
-    hdrs = glob(["include/eggc/*.hpp"]),
+    hdrs = glob(["include/eggc/*.hpp", "include/eggc/*.tpp"]),
     strip_include_prefix = "include",
     visibility = ["//visibility:public"],
 )
