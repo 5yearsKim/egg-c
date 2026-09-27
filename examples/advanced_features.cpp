@@ -35,6 +35,7 @@ int main() {
   if (matches.size() != 1) return 1;
   std::cout << "Joined matches: " << matches.size() << '\n';
   graph.check_invariants();
+  std::cout << eggc::to_dot(graph) << '\n';
   return graph.lookup_expr(eggc::parse_expr("(left p p)")) &&
                  !eggc::to_dot(graph).empty()
              ? 0
