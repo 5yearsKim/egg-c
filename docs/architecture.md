@@ -30,7 +30,7 @@ Follow this order to understand how expressions become optimized results:
 8. `dot.hpp`: graph visualization.
 
 For an algorithm's implementation, open the corresponding `.tpp` in `impl/`.
-The [custom-language regression tests](../tests/language_test.cpp) exercise the
+The [custom-language regression tests](https://github.com/5yearsKim/c-egg/blob/main/tests/language_test.cpp) exercise the
 engine independently of the text API.
 
 ## Read the text API
@@ -55,8 +55,7 @@ Each directory owns its CMake and Bazel targets. Root build files expose the
 header-only library and connect those targets.
 
 `benchmarks/` contains engine workloads and allocation/resource diagnostics. Enable it with
-`EGGC_BUILD_BENCHMARKS=ON` in CMake or build its Bazel targets directly. CI checks
-GCC, Clang, address/undefined-behavior sanitizers, and the Bazel build. See
+`EGGC_BUILD_BENCHMARKS=ON` in CMake or build its Bazel targets directly. See
 [performance and diagnostics](performance.md) for commands and counters.
 
 Keep an application-specific operator or analysis in the application. Put a

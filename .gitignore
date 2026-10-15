@@ -2,6 +2,7 @@
 /build/
 /build-*/
 /cmake-build-*/
+/install/
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
@@ -32,3 +33,7 @@ __pycache__/
 
 # Bazel output symlinks
 /bazel-*
+
+# Documentation environment and generated website
+/.venv-docs/
+/site/

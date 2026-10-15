@@ -101,7 +101,7 @@ the equality, and the subtraction rule could then use it.
 
 ## Run the complete example
 
-The [runnable example](../examples/tutorial_expression_and_matching.cpp) verifies
+The [runnable example](https://github.com/5yearsKim/c-egg/blob/main/examples/tutorial_expression_and_matching.cpp) verifies
 both the absence of a match before merging and the variable binding afterward:
 
 ```sh
@@ -109,5 +109,5 @@ bazel run //examples:tutorial_expression_and_matching
 bazel test //examples:tutorial_expression_and_matching_test
 ```
 
-For CMake commands, see the [README](../README.md). Next, learn how to control
+For CMake commands, see the [installation guide](installation.md). Next, learn how to control
 when a rule applies in [Conditional rewrites](03_conditional_rewrites.md).

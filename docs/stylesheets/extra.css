@@ -1,0 +1,21 @@
+:root {
+  color-scheme: dark;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #673ab7;
+  --md-accent-fg-color: #ce93d8;
+  --md-typeset-a-color: #c4b5fd;
+}
+
+[data-md-color-scheme="default"] {
+  color-scheme: light;
+}
+
+.md-typeset h1 img {
+  vertical-align: middle;
+}
+
+.md-typeset img {
+  height: auto;
+}

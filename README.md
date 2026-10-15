@@ -1,10 +1,16 @@
 <h1><img src="misc/images/eggc.png" alt="egg-c logo" width="32" align="top"> egg-c: egraph-good with C++</h1>
 
-<p align="right">
+<p align="center">
+  <img src="misc/images/eggc_thumb.png" alt="egg-c thumbnail">
+</p>
+
+<p align="center">
   <a href="CMakeLists.txt"><img src="https://img.shields.io/badge/C%2B%2B-20-00599C?logo=cplusplus&amp;logoColor=white" alt="C++20"></a>
   <a href="https://github.com/egraphs-good/egg"><img src="https://img.shields.io/badge/inspired%20by-egg-F4B942" alt="Inspired by egg"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License: MIT"></a>
 </p>
+
+<h3 align="center">egraph-good in C++</h3>
 
 A personal C++20 implementation of [egg (egraph-good)](https://github.com/egraphs-good/egg),
 an e-graph library for equality saturation.
@@ -79,26 +85,6 @@ Follow the tutorials in order:
 
 See [docs](docs/) for reference guides and [examples](examples/) for runnable code.
 
-## Layout
-
-```text
-include/eggc/   Public API headers
-  impl/        Included template implementations and text syntax helpers
-examples/      Runnable examples
-tests/         Engine and API regression tests
-docs/          Short guides
-misc/images/   Artwork
-```
-
-Use `eggc/all.hpp` for the complete library, `eggc/core.hpp` for the generic
-engine, or `eggc/text.hpp` for symbols and text-based rules. Individual public
-headers also work. Template definitions live in `impl/` and are included
-automatically; ship that directory with the headers. The library remains
-header-only, with no `src/` directory.
-
-Use `eggc/engine.hpp` for the minimal generic engine; `core.hpp` and `all.hpp`
-remain compatibility umbrellas. The [reusable runner example](examples/reusable_runner.cpp)
-shows compiled rule reuse, execution slices, scoped extraction, and rewrite replay.
 
 ## License
 

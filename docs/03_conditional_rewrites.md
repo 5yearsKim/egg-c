@@ -17,7 +17,7 @@ All three inputs match the pattern. The condition decides which match may
 produce a replacement. Not knowing the value of `a` means we cannot assume it
 is nonzero.
 
-The [runnable example](../examples/conditional_rewrite.cpp) checks integer
+The [runnable example](https://github.com/5yearsKim/c-egg/blob/main/examples/conditional_rewrite.cpp) checks integer
 literals directly, using the ordinary `SymbolLang` graph. It needs no custom
 analysis.
 

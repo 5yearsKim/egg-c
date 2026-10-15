@@ -1,0 +1,84 @@
+site_name: egg-c
+site_description: A header-only C++20 e-graph library for equality saturation.
+site_url: https://5yearsKim.github.io/c-egg/
+repo_url: https://github.com/5yearsKim/c-egg
+repo_name: 5yearsKim/c-egg
+edit_uri: edit/main/docs/
+
+exclude_docs: |
+  /requirements.txt
+
+theme:
+  name: material
+  language: en
+  logo: misc/images/eggc.png
+  favicon: misc/images/eggc.png
+  font: false
+  palette:
+    - scheme: slate
+      primary: deep purple
+      accent: purple
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+    - scheme: default
+      primary: deep purple
+      accent: purple
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+  features:
+    - navigation.sections
+    - navigation.footer
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Tutorials:
+      - Overview: tutorials.md
+      - Getting started: 01_getting_started.md
+      - Expressions and matching: 02_expression_and_matching.md
+      - Conditional rewrites: 03_conditional_rewrites.md
+      - Custom languages: 04_custom_langage.md
+  - Guides:
+      - Reusable runners: reusable_runners.md
+      - Advanced features: advanced_features.md
+      - Performance and diagnostics: performance.md
+  - Reference:
+      - Public API overview: api.md
+      - Custom language contracts: custom_languages.md
+  - Internals:
+      - Code structure: architecture.md
+
+plugins:
+  - search
+
+hooks:
+  - scripts/docs_hooks.py
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - toc:
+      permalink: true
+
+extra_css:
+  - stylesheets/extra.css
+
+validation:
+  nav:
+    omitted_files: warn
+    not_found: warn
+    absolute_links: warn
+  links:
+    not_found: warn
+    anchors: warn
+    unrecognized_links: warn

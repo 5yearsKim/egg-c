@@ -53,7 +53,7 @@ class. `SymbolLang` treats numbers as symbols; there is no automatic constant fo
 
 ## Run the complete example
 
-The [example](../examples/tutorial_getting_started.cpp) runs the optimizer
+The [example](https://github.com/5yearsKim/c-egg/blob/main/examples/tutorial_getting_started.cpp) runs the optimizer
 and verifies several simplifications:
 
 ```sh
@@ -61,6 +61,6 @@ bazel run //examples:tutorial_getting_started
 bazel test //tests:all //examples:all
 ```
 
-For CMake commands, see the [README](../README.md). Next, learn how expressions,
+For CMake commands, see the [installation guide](installation.md). Next, learn how expressions,
 patterns, and equivalence classes work in
 [Expressions and matching](02_expression_and_matching.md).

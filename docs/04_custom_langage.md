@@ -13,7 +13,7 @@ true AND (in_stock OR false)
 
 It can simplify to `in_stock` while selecting the same products. We will encode
 that filter as `(and true (or in_stock false))` and simplify it with three rules.
-The [complete example](../examples/custom_language.cpp) is runnable with Bazel.
+The [complete example](https://github.com/5yearsKim/c-egg/blob/main/examples/custom_language.cpp) is runnable with Bazel.
 
 ## Define the data and node operations
 
