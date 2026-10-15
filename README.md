@@ -1,5 +1,11 @@
 <h1><img src="misc/images/eggc.png" alt="egg-c logo" width="32" align="top"> egg-c: egraph-good with C++</h1>
 
+<p align="right">
+  <a href="CMakeLists.txt"><img src="https://img.shields.io/badge/C%2B%2B-20-00599C?logo=cplusplus&amp;logoColor=white" alt="C++20"></a>
+  <a href="https://github.com/egraphs-good/egg"><img src="https://img.shields.io/badge/inspired%20by-egg-F4B942" alt="Inspired by egg"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License: MIT"></a>
+</p>
+
 A personal C++20 implementation of [egg (egraph-good)](https://github.com/egraphs-good/egg),
 an e-graph library for equality saturation.
 
@@ -93,3 +99,7 @@ header-only, with no `src/` directory.
 Use `eggc/engine.hpp` for the minimal generic engine; `core.hpp` and `all.hpp`
 remain compatibility umbrellas. The [reusable runner example](examples/reusable_runner.cpp)
 shows compiled rule reuse, execution slices, scoped extraction, and rewrite replay.
+
+## License
+
+Licensed under the [MIT License](LICENSE).
